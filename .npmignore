@@ -1,0 +1,39 @@
+# The package.json "files" allowlist already limits the tarball to
+# dist/, faq.md, README.md and LICENSE. This file is belt-and-braces so that
+# anything added to "files" later still cannot leak dev-only material.
+
+# Sources and build config
+src/
+test/
+scripts/
+tsconfig.json
+tsconfig.build.json
+.prettierrc
+
+# Dependencies and caches
+node_modules/
+coverage/
+.vitest/
+*.tsbuildinfo
+
+# Local workspace metadata
+.freebuff/
+
+# Test fixtures
+**/*.test.ts
+**/*.test.js
+**/__snapshots__/
+
+# Docs that aren't npm-facing
+.github/
+CONTRIBUTING.md
+
+# Editor / OS cruft
+.DS_Store
+Thumbs.db
+.idea/
+
+# Logs
+npm-debug.log*
+yarn-error.log*
+yarn-debug.log*
