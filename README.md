@@ -191,7 +191,7 @@ $ fbdoc check --json --offline | jq '.summary'
 
 ## Requirements
 
-- **Node.js 22.12 or newer.** The CLI is published as ESM (`type: module`).
+- **Node.js 22.13 or newer** (or 23.5+). That floor comes from the runtime dependencies — `commander` needs ≥22.12 and `@inquirer/prompts` needs ≥22.13 or ≥23.5. The CLI is published as ESM (`type: module`).
 - No configuration, no API keys, and no network access is required for `fbdoc faq` or `fbdoc report --offline`.
 
 Colour is disabled automatically when output is piped, in CI, or when `NO_COLOR` is set. Spinners only appear after 300 ms and only on an interactive terminal, so a fast, piped run stays quiet.
