@@ -23,7 +23,7 @@ $ fbdoc
 ```console
 $ fbdoc check
 
-Freebuff Doctor 0.1.0
+Freebuff Doctor 0.1.1
 ───────────────────────
 win32 10.0.26200 (x64) · Node v24.13.0
 
@@ -73,7 +73,7 @@ The main menu (arrow keys, no flags to remember):
 ```console
 $ fbdoc
 
-Freebuff Doctor 0.1.0
+Freebuff Doctor 0.1.1
 win32 10.0.26200 (x64) · Node v24.13.0
 
 ? What would you like to do?
