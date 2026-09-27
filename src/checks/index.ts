@@ -1,11 +1,20 @@
+import { archMatchCheck } from './arch-match.js'
+import { binaryIntegrityCheck } from './binary-integrity.js'
+import { clockSkewCheck } from './clock-skew.js'
+import { configHealthCheck } from './config-health.js'
 import { crashLogCheck } from './crash-log.js'
 import { dnsCheck } from './dns.js'
+import { envHygieneCheck } from './env-hygiene.js'
+import { gitPrereqsCheck } from './git-prereqs.js'
 import { globalInstallCheck } from './global-install.js'
 import { installPathsCheck } from './install-paths.js'
 import { networkCheck } from './network.js'
 import { nodeConflictsCheck } from './node-conflicts.js'
 import { nodeRuntimeCheck } from './node-runtime.js'
+import { resourceLimitsCheck } from './resource-limits.js'
 import { sessionLogsCheck } from './session-logs.js'
+import { staleLockCheck } from './stale-lock.js'
+import { stateGrowthCheck } from './state-growth.js'
 import { storageCheck } from './storage.js'
 import {
   found,
@@ -14,17 +23,30 @@ import {
   type DiagnosticCheck,
 } from './types.js'
 
-/** Every diagnostic, in the order results are reported. */
+/**
+ * Every diagnostic, in the order results are reported: the runtime and its
+ * install first, then the local state it reads, then anything that needs the
+ * network, then the heavier disk and process checks.
+ */
 export const CHECKS: DiagnosticCheck[] = [
   nodeRuntimeCheck,
+  archMatchCheck,
   globalInstallCheck,
+  binaryIntegrityCheck,
   installPathsCheck,
+  configHealthCheck,
+  staleLockCheck,
   dnsCheck,
   networkCheck,
+  clockSkewCheck,
+  envHygieneCheck,
   nodeConflictsCheck,
+  gitPrereqsCheck,
   sessionLogsCheck,
   crashLogCheck,
+  stateGrowthCheck,
   storageCheck,
+  resourceLimitsCheck,
 ]
 
 export interface ProgressEvent {

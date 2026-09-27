@@ -137,16 +137,27 @@ These work on the top level and on any subcommand, in either position (`fbdoc --
 | Id | Check | What it looks at |
 | --- | --- | --- |
 | `node-runtime` | Node.js and npm | Runtime version, whether it's an LTS line, npm presence and version. |
+| `arch-match` | Runtime and machine architecture | Compares `process.arch` with what the machine really is (`uname -m`, `PROCESSOR_ARCHITECTURE`, Rosetta detection) and flags a 32-bit runtime on a 64-bit machine. |
 | `global-install` | Freebuff CLI installation | Global `freebuff`/`codebuff` packages (npm, plus bun/pnpm fallbacks), the installed version vs. the latest on npm, and whether the binary is actually on `PATH`. |
+| `binary-integrity` | Installed binary is runnable | Whether the command is complete: non-empty, executable, not symlinked to a vanished target, not macOS-quarantined, and pointing at a script that still exists. Nothing is executed. |
 | `install-paths` | Install and state directories | `~/.config/manicode`, `~/.config/freebuff-desktop`, `~/.config/codebuff`, and the platform desktop install location; readability; whether `projects/` exists. |
+| `config-health` | Settings and state files | Parses every settings/state JSON (JSONC tolerated); a file that no longer parses fails with a move-it-aside command, and interrupted-write leftovers warn. |
+| `stale-lock` | Orphaned locks and processes | Lock and pid files (including Electron's `SingletonLock`) under the state and project directories, checked against live processes and this machine's hostname. |
 | `dns` | DNS resolution | Resolves `freebuff.com` with your resolver *and* with `8.8.8.8`, then flags hijacks (private/loopback/CGNAT answers) and disagreements. |
 | `network` | Network reachability | HTTPS to `freebuff.com` and `registry.npmjs.org`, with timings and proxy-environment detection. |
+| `clock-skew` | System clock and TLS trust | Compares the local clock with a server `Date` header (warn past 5 minutes, fail past an hour) and audits `NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS` and `SSL_CERT_FILE`. |
+| `env-hygiene` | Environment variables | `NODE_OPTIONS` (`--openssl-legacy-provider`, absurd heap caps, missing loaders), `NODE_PATH`, `NPM_CONFIG_PREFIX`, `ELECTRON_RUN_AS_NODE`, and `.npmrc` files that redirect npm or store a token in the project. |
 | `node-conflicts` | Conflicting Node.js installs | Groups every `node`/`npm`/`npx` on `PATH` by install manager (nvm, fnm, Volta, Homebrew, Scoop, winget, system) and warns when more than one owns `node` — the known cause of endless update loops. |
+| `git-prereqs` | Git availability and config | `git --version`, a global `user.name`/`user.email` (commits fail without them), `core.longpaths` and `core.autocrlf` mismatches, and git's `dubious ownership` refusal. |
 | `session-logs` | Local sessions and chat logs | `manicode/projects/*/chats/*/log.jsonl` and `freebuff-desktop/projects/*/desktop-v2.db`, counts, the newest session, and readability. |
 | `crash-log` | Crash logs | Reads the tail of `orchestrator-stderr.log` and only surfaces a **fatal** entry that is recent (within 72 hours). |
+| `state-growth` | Local session data size | Per-project log and database sizes: names the largest single file (a runaway log past 500 MB warns) and the biggest projects, so you know *what* is using the volume. |
 | `storage` | Disk space and permissions | Free space on the volume holding your Freebuff state, plus write access to it and to npm's global directory. |
+| `resource-limits` | Memory, file descriptors and processes | Effective `ulimit -n`, free RAM, and the number of live Node processes — and it ties a recorded out-of-memory crash back to the memory available right now. |
 
-Each result carries a one-line explanation, an optional `fix` command, and a link to the FAQ section that covers it.
+Checks run concurrently but are always reported in the order above. Each result carries a one-line explanation, an optional `fix` command, and a link to the FAQ section that covers it. `fbdoc checks` prints the ids for use with `--only`.
+
+Two of them are deliberately conservative. `clock-skew` still audits your TLS environment under `--offline`, because a stale `NODE_EXTRA_CA_CERTS` is exactly what breaks HTTPS, and `binary-integrity` inspects the install without ever executing the CLI, so running the doctor can never trigger an engine download or a self-update as a side effect.
 
 ## FAQ search
 
@@ -183,7 +194,7 @@ $ fbdoc check --json
 
 ```console
 $ fbdoc check --json --offline | jq '.summary'
-{ "total": 9, "pass": 7, "warn": 0, "fail": 0, "skip": 2 }
+{ "total": 18, "pass": 15, "warn": 0, "fail": 0, "skip": 3 }
 ```
 
 ```yaml
@@ -208,6 +219,6 @@ $ npm run typecheck
 $ npm run dev -- check   # run the TypeScript source directly with tsx
 ```
 
-The tests cover the FAQ parser and ranking, the pure decision logic behind every check (DNS classification, crash-log classification, Node-manager detection, redaction, semver), and the built CLI itself: exit codes, `--json` shape, `NO_COLOR`, `--only` and report redaction.
+The tests cover the FAQ parser and ranking, the pure decision logic behind every check (DNS classification, crash-log classification, Node-manager detection, architecture matching, config parsing, lock parsing, clock skew, environment audit, git config, resource limits, growth thresholds, redaction, semver), and the built CLI itself: exit codes, `--json` shape, `NO_COLOR`, `--only` and report redaction.
 
 Layout:

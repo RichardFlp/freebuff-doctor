@@ -101,7 +101,10 @@ export const WIZARD_NODES: Record<string, WizardNode> = {
       },
       {
         label: 'Run just the network checks',
-        action: { type: 'diagnose', only: ['dns', 'network'] },
+        action: {
+          type: 'diagnose',
+          only: ['dns', 'network', 'clock-skew', 'env-hygiene'],
+        },
       },
     ],
   },
@@ -146,7 +149,11 @@ export const WIZARD_NODES: Record<string, WizardNode> = {
           type: 'diagnose',
           only: [
             'node-runtime',
+            'arch-match',
             'global-install',
+            'binary-integrity',
+            'config-health',
+            'stale-lock',
             'node-conflicts',
             'crash-log',
           ],
@@ -212,7 +219,7 @@ export const WIZARD_NODES: Record<string, WizardNode> = {
         label: 'Run just the log checks',
         action: {
           type: 'diagnose',
-          only: ['session-logs', 'crash-log', 'install-paths'],
+          only: ['session-logs', 'crash-log', 'state-growth', 'install-paths'],
         },
       },
     ],
@@ -249,7 +256,15 @@ export const WIZARD_NODES: Record<string, WizardNode> = {
         label: 'Run just the install checks',
         action: {
           type: 'diagnose',
-          only: ['node-runtime', 'global-install', 'install-paths', 'storage'],
+          only: [
+            'node-runtime',
+            'arch-match',
+            'global-install',
+            'binary-integrity',
+            'git-prereqs',
+            'install-paths',
+            'storage',
+          ],
         },
       },
     ],

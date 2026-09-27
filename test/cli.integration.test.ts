@@ -72,7 +72,9 @@ describe.skipIf(!existsSync(cli))('fbdoc CLI', () => {
     const result = run(['checks'])
     expect(result.status).toBe(0)
     expect(result.stdout).toContain('node-runtime')
-    expect(result.stdout.trim().split('\n')).toHaveLength(9)
+    expect(result.stdout).toContain('config-health')
+    expect(result.stdout).toContain('state-growth')
+    expect(result.stdout.trim().split('\n')).toHaveLength(18)
   })
 
   it('emits parseable JSON that matches the exit code contract', () => {
@@ -93,23 +95,27 @@ describe.skipIf(!existsSync(cli))('fbdoc CLI', () => {
 
     expect(payload.meta.doctor).toBe(manifest.version)
     expect(payload.meta.offline).toBe(true)
-    expect(payload.checks).toHaveLength(9)
-    expect(payload.summary.total).toBe(9)
+    expect(payload.checks).toHaveLength(18)
+    expect(payload.summary.total).toBe(18)
 
     const counted =
       payload.summary.pass +
       payload.summary.warn +
       payload.summary.fail +
       payload.summary.skip
-    expect(counted).toBe(9)
+    expect(counted).toBe(18)
     expect(payload.ok).toBe(payload.summary.fail === 0)
     expect(result.status).toBe(payload.summary.fail > 0 ? 1 : 0)
 
-    // --offline must not touch the network.
+    // --offline must not touch the network. clock-skew still audits the local
+    // TLS environment, so it only reports skip when nothing is wrong there.
     const dns = payload.checks.find((check) => check.id === 'dns')
     const network = payload.checks.find((check) => check.id === 'network')
     expect(dns?.status).toBe('skip')
     expect(network?.status).toBe('skip')
+    expect(['skip', 'warn']).toContain(
+      payload.checks.find((check) => check.id === 'clock-skew')?.status,
+    )
   })
 
   it('finds the right FAQ section from a loose phrase', () => {
