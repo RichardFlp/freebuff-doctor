@@ -4,6 +4,8 @@
 [![node](https://img.shields.io/node/v/freebuff-doctor.svg)](https://nodejs.org)
 [![license](https://img.shields.io/npm/l/freebuff-doctor.svg)](./LICENSE)
 
+https://github.com/user-attachments/assets/b5a77648-8af7-434b-bef5-b1d79967ca56
+
 **Diagnose and fix common Freebuff problems from your terminal** — without waiting on Discord support.
 
 `freebuff-doctor` installs one command, `fbdoc`, which combines:
@@ -209,24 +211,3 @@ $ npm run dev -- check   # run the TypeScript source directly with tsx
 The tests cover the FAQ parser and ranking, the pure decision logic behind every check (DNS classification, crash-log classification, Node-manager detection, redaction, semver), and the built CLI itself: exit codes, `--json` shape, `NO_COLOR`, `--only` and report redaction.
 
 Layout:
-
-```
-src/
-  cli.ts          command tree, global flags, error handling
-  commands/       check, faq, report, wizard (tree + runner), menu
-  checks/         one module per diagnostic, plus types and the concurrent runner
-  faq/            markdown parser, search index, slug→section references
-  report/         redacted support report builder
-  ui/             theme/colour, output, summary box, spinner, prompts
-  util/           process runner, registry lookups, semver, redaction, markdown, fs scanning
-```
-
-## FAQ source of truth
-
-[`faq.md`](./faq.md) is the source of answers. `freebuff-doctor` never invents advice: checks and the wizard point at sections of that file. If the community FAQ changes, update `faq.md` and, when a section is renamed, the matching key in `src/faq/aliases.ts` — a test fails if an alias stops pointing at a real section.
-
-## License
-
-[MIT](./LICENSE) © FuneralPixels
-
-Freebuff and Codebuff are products of their respective owners. This is a community companion tool, not an official CodebuffAI release.
