@@ -7,6 +7,7 @@ import {
   decideMatches,
   normalize,
   searchIndex,
+  significantTokens,
 } from '../src/faq/search.js'
 
 const faq = loadFaq()
@@ -121,6 +122,36 @@ describe('searchIndex', () => {
     expect(topSlug('no internet')).toBe('network-issues')
   })
 
+  it('ignores filler words instead of letting them dilute the ranking', () => {
+    // The conversational form must still land on a confident, single answer
+    // rather than degrading into a pick-one list.
+    const terse = searchIndex(index, 'cant connect')
+    const conversational = searchIndex(index, 'i cant connect please')
+
+    expect(conversational[0]?.section.slug).toBe('network-issues')
+    // Filler must not weaken the answer: both forms carry the same confidence.
+    expect(conversational[0]?.confidence).toBeCloseTo(
+      terse[0]?.confidence ?? 0,
+      1,
+    )
+    expect(conversational[0]?.confidence).toBeGreaterThanOrEqual(0.9)
+    expect(decideMatches(conversational).kind).toBe('single')
+  })
+
+  it('answers directly even when a stray word fuzzy-matches another section', () => {
+    // "can't" appears inside the Opening a Project section, which used to be
+    // enough to turn this into a needless pick-one list.
+    const matches = searchIndex(index, 'can you help me i cant connect')
+    expect(matches[0]?.section.slug).toBe('network-issues')
+    expect(decideMatches(matches).kind).toBe('single')
+  })
+
+  it('never strips a query down to nothing', () => {
+    expect(significantTokens('the of and')).toEqual(['the', 'of', 'and'])
+    expect(significantTokens('i cant connect')).toEqual(['cant', 'connect'])
+    expect(significantTokens('not working')).toEqual(['not', 'working'])
+  })
+
   it('tolerates typos and partial phrasing', () => {
     expect(topSlug('netwrok issue')).toBe('network-issues')
     expect(topSlug('update loup')).toBe('crash-on-start--updating')
@@ -178,8 +209,18 @@ describe('decideMatches', () => {
     expect(decideMatches(searchIndex(index, 'freebucks')).kind).toBe('multiple')
   })
 
-  it('answers a lone candidate instead of prompting with a list of one', () => {
-    const matches = searchIndex(index, 'netwrok issue')
+  it('answers a clear winner directly instead of prompting with a list', () => {
+    // Typos still collect weak fuzzy stragglers, but a direct hit that leads by
+    // a clear margin must be answered rather than turned into a pick-list.
+    expect(topSlug('netwrok issue')).toBe('network-issues')
+    expect(decideMatches(searchIndex(index, 'netwrok issue')).kind).toBe(
+      'single',
+    )
+    expect(decideMatches(searchIndex(index, 'update loup')).kind).toBe('single')
+  })
+
+  it('answers a lone candidate', () => {
+    const matches = searchIndex(index, 'privecy')
     expect(matches).toHaveLength(1)
     expect(decideMatches(matches).kind).toBe('single')
   })
