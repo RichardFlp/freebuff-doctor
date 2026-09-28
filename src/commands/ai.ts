@@ -25,7 +25,6 @@ import {
 } from '../checks/types.js'
 import { heading, printResult, write, writeErr } from '../ui/output.js'
 import { ask, askSecret, confirm } from '../ui/prompts.js'
-import { withSpinner } from '../ui/spinner.js'
 import { c, GLYPH, isInteractive } from '../ui/theme.js'
 import {
   collectSnapshot,
@@ -70,17 +69,17 @@ async function collectForAssistant(
     timeoutMs: options.timeoutMs,
   })
 
-  const results =
-    options.diagnostics === false
-      ? []
-      : await withSpinner(
-          'Running the diagnostics so the assistant has context…',
-          () =>
-            runChecks({
-              context,
-              ...(options.only ? { only: options.only } : {}),
-            }),
-        )
+  let results: CheckResult[] = []
+  if (options.diagnostics !== false) {
+    // A plain status line rather than a spinner: on a console that does not
+    // honour ANSI, a spinner frame is never erased and the findings below are
+    // printed on top of it. The assistant's whole flow stays cursor-free.
+    writeErr(c().dim('Running the diagnostics so the assistant has context…'))
+    results = await runChecks({
+      context,
+      ...(options.only ? { only: options.only } : {}),
+    })
+  }
 
   const summary = summarize(results)
   const npmVersion =
@@ -236,14 +235,22 @@ function reportAiFailure(error: unknown, verbose: boolean): void {
 }
 
 /**
- * Sends the conversation so far and prints the answer, streaming it in as it
- * arrives. `withSpinner` covers the gap until the first fragment.
+ * Sends the conversation so far and prints the answer as it arrives.
+ *
+ * Deliberately no spinner. A spinner redraws the current line with ANSI cursor
+ * control, and on a console that does not honour those codes its frames stay on
+ * screen while the streamed text lands on top of them — which turns the answer
+ * into a jumble of half-overwritten lines. This is the one place in the CLI
+ * that writes *during* a wait, so it may not move the cursor at all: one status
+ * line, then the answer, on ordinary newline-separated lines.
  */
 async function answerOnce(
   messages: ChatMessage[],
   options: AiCommandOptions,
   source: ApiKeySource,
 ): Promise<string> {
+  writeErr(c().dim('Asking Groq…'))
+
   let opened = false
   const open = (): void => {
     if (opened) return
@@ -252,19 +259,16 @@ async function answerOnce(
     write(c().bold('Freebuff assistant'))
   }
 
-  const answer = await withSpinner('Asking Groq…', (reporter) =>
-    chat(
-      {
-        apiKey: source.key,
-        messages,
-        timeoutMs: aiTimeoutMs(options),
-      },
-      (delta) => {
-        reporter.stop()
-        open()
-        process.stdout.write(delta)
-      },
-    ),
+  const answer = await chat(
+    {
+      apiKey: source.key,
+      messages,
+      timeoutMs: aiTimeoutMs(options),
+    },
+    (delta) => {
+      open()
+      process.stdout.write(delta)
+    },
   )
 
   open()

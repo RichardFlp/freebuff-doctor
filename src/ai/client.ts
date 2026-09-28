@@ -83,6 +83,27 @@ export function deltaFromSsePayload(payload: string): string | null {
   }
 }
 
+/**
+ * Makes model output safe to print. A newline or tab is kept; every other
+ * control character is dropped, and a stray carriage return becomes a newline
+ * instead of moving the cursor back over what the user has already read.
+ *
+ * The answer is untrusted text arriving from a third party, so it should never
+ * be able to send escape sequences to the terminal.
+ */
+export function sanitizeText(value: string): string {
+  return (
+    value
+      // Whole escape sequences first: CSI (colour, erase, cursor movement, the
+      // synchronised-output pairs) and OSC (hyperlinks, window titles).
+      .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
+      .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)?/g, '')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+  )
+}
+
 /** The answer text in a non-streamed response body. */
 export function answerFromBody(body: string): string {
   try {
@@ -90,7 +111,7 @@ export function answerFromBody(body: string): string {
       choices?: Array<{ message?: { content?: unknown } }>
     }
     const content = parsed.choices?.[0]?.message?.content
-    return typeof content === 'string' ? content.trim() : ''
+    return typeof content === 'string' ? sanitizeText(content).trim() : ''
   } catch {
     return ''
   }
@@ -175,7 +196,9 @@ async function readStream(
 
   const consume = (payloads: string[]): void => {
     for (const payload of payloads) {
-      const delta = deltaFromSsePayload(payload)
+      const raw = deltaFromSsePayload(payload)
+      if (!raw) continue
+      const delta = sanitizeText(raw)
       if (!delta) continue
       answer += delta
       onDelta(delta)

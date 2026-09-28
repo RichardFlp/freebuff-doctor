@@ -11,6 +11,7 @@ import {
   chat,
   deltaFromSsePayload,
   describeFailure,
+  sanitizeText,
   serverMessage,
   splitSseBuffer,
 } from '../src/ai/client.js'
@@ -229,6 +230,32 @@ describe('answerFromBody', () => {
   })
 })
 
+describe('sanitizeText', () => {
+  it('keeps the characters an answer is allowed to have', () => {
+    expect(sanitizeText('Run this:\n\tnpm i -g freebuff@latest\n')).toBe(
+      'Run this:\n\tnpm i -g freebuff@latest\n',
+    )
+  })
+
+  it('turns a carriage return into a newline instead of overwriting the line', () => {
+    expect(sanitizeText('windows\r\nlines')).toBe('windows\nlines')
+    expect(sanitizeText('overwritten\rrest survived\n')).toBe(
+      'overwritten\nrest survived\n',
+    )
+  })
+
+  it('strips escape sequences so a model cannot scramble the terminal', () => {
+    // Exactly what the answer used to do to a console that honours these:
+    // erase the line, jump to the start, then print on top of the user's text.
+    expect(sanitizeText('\u001b[2K\u001b[1Gclean')).toBe('clean')
+    expect(sanitizeText('\u001b[?2026h\u001b[31mred\u001b[0m')).toBe('red')
+    expect(
+      sanitizeText('\u001b]8;;https://x.test\u0007label\u001b]8;;\u0007'),
+    ).toBe('label')
+    expect(sanitizeText('before\u0007after')).toBe('beforeafter')
+  })
+})
+
 describe('describeFailure', () => {
   const body = JSON.stringify({
     error: { message: 'Invalid API Key', type: 'invalid_request_error' },
@@ -368,6 +395,27 @@ describe('chat', () => {
       stream: boolean
     }
     expect(sent.stream).toBe(true)
+  })
+
+  it('never hands a control character to the renderer', async () => {
+    const frames = [
+      'data: {"choices":[{"delta":{"content":"safe "}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"\\u001b[2K\\u001b[1G\\rbroken"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ]
+    const { fetchImpl } = recordingFetch(sseResponse(frames))
+
+    const fragments: string[] = []
+    const answer = await chat(
+      { apiKey: TEST_KEY, messages: MESSAGES, fetchImpl },
+      (delta) => fragments.push(delta),
+    )
+
+    expect(fragments.join('')).toBe('safe \nbroken')
+    expect(answer).toBe('safe \nbroken')
+    expect(fragments.join('')).not.toMatch(
+      /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/,
+    )
   })
 
   it('throws an actionable error when Groq rejects the key', async () => {
