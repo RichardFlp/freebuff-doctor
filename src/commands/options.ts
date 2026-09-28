@@ -15,6 +15,8 @@ export interface GlobalOptions {
   quiet: boolean
   /** Restrict the run to these check ids. */
   only?: string[]
+  /** `--no-self-update`: do not look for a newer release when the menu opens. */
+  selfUpdate?: boolean
 }
 
 export const DEFAULT_TIMEOUT_MS = 8000

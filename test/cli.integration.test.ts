@@ -77,6 +77,22 @@ describe.skipIf(!existsSync(cli))('fbdoc CLI', () => {
     expect(result.stderr).not.toMatch(/\bat .*\.js:\d+/)
   })
 
+  it('offers --no-self-update, and never updates in a pipe', () => {
+    expect(run(['--help']).stdout).toContain('--no-self-update')
+    expect(run(['menu', '--help']).stdout).toContain('--no-self-update')
+
+    // Without a terminal the menu runs the diagnostics instead, so a script or
+    // CI job must never see an update check or a global install.
+    const piped = run(['menu', '--offline', '--no-self-update'])
+    expect(piped.status).toBe(0)
+    expect(piped.stderr).toContain('No interactive terminal detected')
+    // The diagnostics themselves say "available" (free space, updates that may
+    // exist), so match the update notice's own wording instead.
+    const notice = /is available \(you are on|Updated to |behind origin\/main/
+    expect(piped.stdout).not.toMatch(notice)
+    expect(piped.stderr).not.toMatch(notice)
+  })
+
   it('lists the diagnostic checks', () => {
     const result = run(['checks'])
     expect(result.status).toBe(0)

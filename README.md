@@ -14,7 +14,8 @@ https://github.com/user-attachments/assets/b5a77648-8af7-434b-bef5-b1d79967ca56
 2. **A searchable, offline FAQ** — fuzzy enough that `cant connect` still finds the Network Issues answer.
 3. **A troubleshooting wizard** for when you aren't sure what's wrong.
 4. **An on-demand AI assistant** — after a run, ask Groq's `gpt-oss-20b` to explain what the checks found and how to fix it (`fbdoc ask`).
-5. **A redacted report you can paste into Discord** — or export as a detailed `.md` file for a Freebuff helper, mod or support member.
+5. **A copy that keeps itself current** — opening the menu checks npm and installs a newer release for you.
+6. **A redacted report you can paste into Discord** — or export as a detailed `.md` file for a Freebuff helper, mod or support member.
 
 ```console
 $ npm install -g freebuff-doctor
@@ -26,7 +27,7 @@ $ fbdoc
 ```console
 $ fbdoc check
 
-Freebuff Doctor 0.5.0
+Freebuff Doctor 0.6.0
 ───────────────────────
 win32 10.0.26200 (x64) · Node v24.13.0
 
@@ -102,7 +103,7 @@ The main menu (arrow keys, no flags to remember):
 ```console
 $ fbdoc
 
-Freebuff Doctor 0.5.0
+Freebuff Doctor 0.6.0
 win32 10.0.26200 (x64) · Node v24.13.0
 
 ? What would you like to do?
@@ -208,11 +209,36 @@ Delete that `groq.json` to forget the key. It is never printed back in full, nev
 
 `--offline` and the assistant are mutually exclusive — it says so and exits `1` rather than pretending to answer. Under a pipe or in CI nothing ever prompts: with no key configured, `fbdoc ask` prints how to set one and exits `1`.
 
+## Keeping itself up to date
+
+Opening the interactive menu checks npm for a newer release, and installs it when there is one:
+
+```console
+$ fbdoc
+
+  freebuff-doctor 0.6.0 is available (you are on 0.5.2) — updating…
+  ✔ Updated to 0.6.0. Restart fbdoc to use it.
+
+Freebuff Doctor 0.5.2
+win32 10.0.26200 (x64) · Node v24.13.0
+…
+```
+
+The rules it follows are deliberately narrow:
+
+- **The menu only.** Never `check`, `ask`, `report`, `export` or `diff`, and never when output is piped or `CI` is set — so a script or a pipeline can never trigger a global install.
+- **npm only.** The single command that can run is `npm i -g freebuff-doctor@latest`. Nothing else is executed. If it fails, you get the reason and the command to run yourself.
+- **Once per version.** The installed version is recorded under the fbdoc config directory, so a copy that lags behind (running from a git checkout, say) reports what is installed instead of reinstalling it on every launch.
+- **Silent when there is nothing to say.** A current install, an unreachable registry and `--offline` all print nothing. `--verbose` reports what the check found.
+- **`--no-self-update`** turns it off entirely, in either position: `fbdoc --no-self-update` or `fbdoc menu --no-self-update`.
+
+When the copy you are running sits inside a **git checkout**, fbdoc also compares it with `origin/main` and tells you how far behind it is. That part is read-only by design: it never pulls, never stashes and never touches a working tree — and when your checkout has uncommitted changes, it says only that it is leaving it alone. Updates always come from npm.
+
 ## Command reference
 
 | Command | What it does |
 | --- | --- |
-| `fbdoc` | Interactive main menu: run diagnostics, search the FAQ, use the wizard, ask the AI assistant, export a report. |
+| `fbdoc` | Interactive main menu: run diagnostics, search the FAQ, use the wizard, ask the AI assistant, export a report. Checks npm for a newer release and installs it (`--no-self-update` to skip). |
 | `fbdoc check` | Runs every diagnostic and prints pass/warn/fail per check. Supports `--json` and `--only`. |
 | `fbdoc faq <query>` | Fuzzy-searches the bundled FAQ and prints the best-matching section. |
 | `fbdoc faq --list` | Lists every FAQ section. |
@@ -246,6 +272,7 @@ These work on the top level and on any subcommand, in either position (`fbdoc --
 | `--output <file>` | (`report`) Write the report to a file instead of stdout. |
 | `--dir <folder>` | (`export`) Write the report into this folder instead of Downloads. |
 | `--stdout` | (`export`) Print the detailed report instead of saving it. |
+| `--no-self-update` | (top level, `menu`) Skip the update check when the menu opens. |
 | `--no-checks` | (`ask`) Skip the diagnostics and let the assistant answer from your question alone. |
 
 ## What it checks
@@ -367,7 +394,8 @@ Layout:
 
 ```
 src/
-  ai/               the Groq client, API-key storage, and the prompt built from check results
+  ai/               the Groq client, API-key storage, the prompt and the streaming markdown renderer
+  selfupdate/       the npm release check, the git checkout comparison and its state file
   cli.ts            commander tree: check, ask, faq, wizard, report, export, explain, env, diff, checks, menu
   checks/           one module per check, plus catalog.ts (categories, summaries, "why" text)
   commands/         one module per command, including the interactive menu and wizard

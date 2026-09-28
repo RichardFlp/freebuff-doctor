@@ -40,6 +40,7 @@ Examples:
   $ fbdoc export                 Detailed .md report saved to your Downloads folder
   $ fbdoc ask "why won't it start?"   Run the checks, then ask Groq's gpt-oss-20b
   $ fbdoc ask                    Same, but as an interactive chat
+  $ fbdoc --no-self-update       Open the menu without checking for a new release
   $ fbdoc diff before.json after.json   Did the fix actually work?
 
 Exit codes:
@@ -59,6 +60,14 @@ function addCommonOptions(command: Command): Command {
     .option('--no-color', 'disable coloured output')
 }
 
+/** Only the menu path checks for a new release, so only it takes the flag. */
+function addSelfUpdateOption(command: Command): Command {
+  return command.option(
+    '--no-self-update',
+    'skip the update check when the interactive menu opens',
+  )
+}
+
 /**
  * Merges options declared on the root command with those on the subcommand, so
  * both `fbdoc --verbose check` and `fbdoc check --verbose` behave the same.
@@ -70,6 +79,10 @@ export function resolveOptions(
   const local = command ? command.opts() : {}
   const global = root.opts()
   const pick = (key: string): unknown => local[key] ?? global[key]
+  // `--no-x` options default to true, so `??` cannot merge them: false wins
+  // wherever it was given, `fbdoc --no-self-update menu` included.
+  const bothTrue = (key: string): boolean =>
+    local[key] !== false && global[key] !== false
 
   return {
     verbose: Boolean(pick('verbose')),
@@ -80,6 +93,7 @@ export function resolveOptions(
     all: Boolean(pick('all')),
     quiet: Boolean(pick('quiet')),
     color: pick('color') !== false,
+    selfUpdate: bothTrue('selfUpdate'),
     ...(parseOnly(pick('only')) ? { only: parseOnly(pick('only')) } : {}),
   }
 }
@@ -107,7 +121,7 @@ export function buildProgram(): Command {
     .showHelpAfterError('(run `fbdoc --help` to see all available commands)')
     .addHelpText('after', EXAMPLES)
 
-  addCommonOptions(program)
+  addSelfUpdateOption(addCommonOptions(program))
 
   program.action(async () => {
     const options = resolveOptions(program)
@@ -260,7 +274,7 @@ export function buildProgram(): Command {
     .description(
       'Launch the interactive menu (same as running fbdoc with no arguments)',
     )
-  addCommonOptions(menu).action(async () => {
+  addSelfUpdateOption(addCommonOptions(menu)).action(async () => {
     const options = resolveOptions(program, menu)
     applyGlobals(options)
     process.exitCode = await runMenu(options)

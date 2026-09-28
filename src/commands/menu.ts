@@ -1,6 +1,7 @@
 import { c, isInteractive } from '../ui/theme.js'
 import { write, writeErr } from '../ui/output.js'
 import { choose, type Choice } from '../ui/prompts.js'
+import { printUpdateReport, runSelfUpdate } from '../selfupdate/check.js'
 import { describePlatform } from '../util/platform.js'
 import { doctorVersion } from '../util/version.js'
 import { runAiCommand } from './ai.js'
@@ -73,6 +74,17 @@ export async function runMenu(options: GlobalOptions): Promise<number> {
     )
     return runCheckCommand(options)
   }
+
+  // Keep the npm-installed copy current. Only ever on an interactive menu: a
+  // piped or CI `fbdoc` runs the diagnostics, and installing packages on a
+  // script's behalf would be a surprise.
+  printUpdateReport(
+    await runSelfUpdate({
+      offline: options.offline,
+      verbose: options.verbose,
+      enabled: options.selfUpdate !== false,
+    }),
+  )
 
   printBanner()
 
