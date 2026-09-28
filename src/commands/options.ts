@@ -9,6 +9,10 @@ export interface GlobalOptions {
   json: boolean
   /** Treat warnings as failures for the exit code. */
   strict: boolean
+  /** Print every check result in full, including the ones that passed. */
+  all: boolean
+  /** Print only the checks that need attention. */
+  quiet: boolean
   /** Restrict the run to these check ids. */
   only?: string[]
 }
@@ -46,6 +50,8 @@ export function defaultOptions(
     timeoutMs: DEFAULT_TIMEOUT_MS,
     json: false,
     strict: false,
+    all: false,
+    quiet: false,
     ...overrides,
   }
 }

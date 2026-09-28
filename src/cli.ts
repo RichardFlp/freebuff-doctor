@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 import { Command, CommanderError } from 'commander'
 
-import { listChecks } from './checks/index.js'
+import { checkDoc } from './checks/catalog.js'
+import { checksByCategory, listChecks } from './checks/index.js'
 import { runCheckCommand } from './commands/check.js'
+import { runDiffCommand } from './commands/diff.js'
+import { runEnvCommand } from './commands/env.js'
+import { runExplainCommand } from './commands/explain.js'
 import { runFaqCommand } from './commands/faq.js'
 import { runMenu } from './commands/menu.js'
 import {
@@ -13,9 +17,10 @@ import {
 } from './commands/options.js'
 import { runReportCommand } from './commands/report.js'
 import { runWizard } from './commands/wizard.js'
-import { printFailure, writeErr } from './ui/output.js'
+import { hint, printFailure, write, writeErr } from './ui/output.js'
 import { isCancellation } from './ui/prompts.js'
 import { c, setColorEnabled, setVerbose } from './ui/theme.js'
+import { padTo } from './util/width.js'
 import { doctorVersion } from './util/version.js'
 
 const EXAMPLES = `
@@ -24,10 +29,13 @@ Examples:
   $ fbdoc check                  Run every diagnostic
   $ fbdoc check --json           Machine-readable results, for CI
   $ fbdoc check --only dns,network   Run a subset of checks
+  $ fbdoc check --quiet          Only what needs attention
+  $ fbdoc explain config-health  What one check looks at, and why it matters
   $ fbdoc faq "cant connect"     Search the FAQ
-  $ fbdoc faq --list             List every FAQ section
   $ fbdoc wizard                 Guided troubleshooting
+  $ fbdoc env                    Your setup, with paths and secrets redacted
   $ fbdoc report > report.md     Redacted report for a help thread
+  $ fbdoc diff before.json after.json   Did the fix actually work?
 
 Exit codes:
   0  no problems found (warnings still exit 0 unless --strict is used)
@@ -64,6 +72,8 @@ export function resolveOptions(
     timeoutMs: parseTimeout(pick('timeout')),
     json: Boolean(pick('json')),
     strict: Boolean(pick('strict')),
+    all: Boolean(pick('all')),
+    quiet: Boolean(pick('quiet')),
     color: pick('color') !== false,
     ...(parseOnly(pick('only')) ? { only: parseOnly(pick('only')) } : {}),
   }
@@ -110,10 +120,50 @@ export function buildProgram(): Command {
       '--only <ids>',
       'comma-separated check ids to run (see `fbdoc checks`)',
     )
+    .option('--all', 'print every check result, including the ones that passed')
+    .option('--quiet', 'print only the checks that need attention')
   addCommonOptions(check).action(async () => {
     const options = resolveOptions(program, check)
     applyGlobals(options)
     process.exitCode = await runCheckCommand(options)
+  })
+
+  const explain = program
+    .command('explain [id]')
+    .description(
+      'Explain what a check looks at and why it matters (no id lists them all)',
+    )
+    .option('--json', 'print the explanation as JSON')
+  addCommonOptions(explain).action(async (id: string | undefined) => {
+    const options = resolveOptions(program, explain)
+    applyGlobals(options)
+    process.exitCode = await runExplainCommand(id, { json: options.json })
+  })
+
+  const diff = program
+    .command('diff <before> <after>')
+    .description(
+      'Compare two saved `fbdoc check --json` reports to see what a fix changed',
+    )
+    .option('--json', 'print the comparison as JSON')
+  addCommonOptions(diff).action(async (before: string, after: string) => {
+    const options = resolveOptions(program, diff)
+    applyGlobals(options)
+    process.exitCode = await runDiffCommand(before, after, {
+      json: options.json,
+    })
+  })
+
+  const env = program
+    .command('env')
+    .description(
+      'Print your setup (runtime, PATH, relevant variables) with secrets redacted',
+    )
+    .option('--json', 'print the snapshot as JSON')
+  addCommonOptions(env).action(async () => {
+    const options = resolveOptions(program, env)
+    applyGlobals(options)
+    process.exitCode = await runEnvCommand({ json: options.json })
   })
 
   const faq = program
@@ -176,13 +226,46 @@ export function buildProgram(): Command {
 
   program
     .command('checks')
-    .description('List every diagnostic check and its id')
-    .action(() => {
+    .description('List every diagnostic check, grouped by what it covers')
+    .option('--json', 'print the check list as JSON')
+    .action((options: { json?: boolean }) => {
       const rows = listChecks()
-      const width = Math.max(...rows.map((row) => row.id.length))
-      for (const row of rows) {
-        process.stdout.write(`${row.id.padEnd(width)}  ${c().dim(row.title)}\n`)
+
+      if (options.json) {
+        write(
+          JSON.stringify(
+            {
+              total: rows.length,
+              checks: rows.map((row) => ({
+                id: row.id,
+                title: row.title,
+                category: checkDoc(row.id)?.category ?? null,
+                summary: checkDoc(row.id)?.summary ?? null,
+                network: checkDoc(row.id)?.network ?? false,
+              })),
+            },
+            null,
+            2,
+          ),
+        )
+        return
       }
+
+      const width = Math.max(...rows.map((row) => row.id.length))
+      write(`${c().bold(`${rows.length} diagnostic checks`)}`)
+      write('')
+      for (const group of checksByCategory()) {
+        write(`  ${c().bold(group.category)}`)
+        for (const { check: entry, doc } of group.checks) {
+          write(
+            `    ${c().cyan(padTo(entry.id, width))}  ${c().dim(doc?.summary ?? entry.title)}`,
+          )
+        }
+        write('')
+      }
+      hint(
+        'Explain one with `fbdoc explain <id>`, or run just it with `fbdoc check --only <id>`.',
+      )
     })
 
   return program

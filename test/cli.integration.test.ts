@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -74,7 +75,8 @@ describe.skipIf(!existsSync(cli))('fbdoc CLI', () => {
     expect(result.stdout).toContain('node-runtime')
     expect(result.stdout).toContain('config-health')
     expect(result.stdout).toContain('state-growth')
-    expect(result.stdout.trim().split('\n')).toHaveLength(18)
+    expect(result.stdout).toContain('proxy-trust')
+    expect(result.stdout).toContain('30 diagnostic checks')
   })
 
   it('emits parseable JSON that matches the exit code contract', () => {
@@ -95,15 +97,15 @@ describe.skipIf(!existsSync(cli))('fbdoc CLI', () => {
 
     expect(payload.meta.doctor).toBe(manifest.version)
     expect(payload.meta.offline).toBe(true)
-    expect(payload.checks).toHaveLength(18)
-    expect(payload.summary.total).toBe(18)
+    expect(payload.checks).toHaveLength(30)
+    expect(payload.summary.total).toBe(30)
 
     const counted =
       payload.summary.pass +
       payload.summary.warn +
       payload.summary.fail +
       payload.summary.skip
-    expect(counted).toBe(18)
+    expect(counted).toBe(30)
     expect(payload.ok).toBe(payload.summary.fail === 0)
     expect(result.status).toBe(payload.summary.fail > 0 ? 1 : 0)
 
@@ -201,5 +203,96 @@ describe.skipIf(!existsSync(cli))('fbdoc CLI', () => {
         ])
       }
     }
+  })
+
+  it('lists every check as JSON with its category', () => {
+    const result = run(['checks', '--json'])
+    expect(result.status).toBe(0)
+    const payload = JSON.parse(result.stdout) as {
+      total: number
+      checks: Array<{ id: string; category: string | null; summary: string }>
+    }
+    expect(payload.total).toBe(30)
+    expect(payload.checks).toHaveLength(30)
+    expect(payload.checks.every((check) => check.category !== null)).toBe(true)
+    expect(payload.checks.every((check) => check.summary.length > 0)).toBe(true)
+  })
+
+  it('explains a single check', () => {
+    const result = run(['explain', 'dns'])
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('DNS resolution')
+    expect(result.stdout).toContain('What it looks at')
+    expect(result.stdout).toContain('fbdoc check --only dns')
+  })
+
+  it('lists every check when explain is given no id', () => {
+    const result = run(['explain'])
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('proxy-trust')
+    expect(result.stdout).toContain('Network')
+  })
+
+  it('fails politely on an unknown check id', () => {
+    const result = run(['explain', 'definitely-not-a-check'])
+    expect(result.status).toBe(1)
+    expect(result.stderr).toMatch(/No check is called/)
+  })
+
+  it('prints an environment snapshot with redacted paths', () => {
+    const result = run(['env'])
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('PATH')
+    expect(result.stdout).toContain('Node')
+
+    const home = process.env.USERPROFILE ?? process.env.HOME ?? ''
+    if (home) {
+      const normalized = result.stdout.replace(/\\/g, '/').toLowerCase()
+      expect(normalized).not.toContain(home.replace(/\\/g, '/').toLowerCase())
+    }
+  })
+
+  it('prints the environment snapshot as JSON', () => {
+    const result = run(['env', '--json'])
+    expect(result.status).toBe(0)
+    const payload = JSON.parse(result.stdout) as {
+      node: string
+      pathEntries: Array<{ index: number; duplicate: boolean }>
+    }
+    expect(payload.node).toMatch(/^v\d+/)
+    expect(Array.isArray(payload.pathEntries)).toBe(true)
+  })
+
+  it('compares two saved reports', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'fbdoc-diff-'))
+    const before = path.join(dir, 'before.json')
+    const after = path.join(dir, 'after.json')
+    const dns = {
+      id: 'dns',
+      title: 'DNS resolution',
+      message: 'resolution failed',
+    }
+    type SavedCheck = typeof dns & { status: string }
+    const report = (checks: SavedCheck[]): string => JSON.stringify({ checks })
+
+    // fail → pass is a fix, and a fix alone is not a failure.
+    writeFileSync(before, report([{ ...dns, status: 'fail' }]))
+    writeFileSync(after, report([{ ...dns, status: 'pass' }]))
+    const fixed = run(['diff', before, after])
+    expect(fixed.status).toBe(0)
+    expect(fixed.stdout).toContain('fixed')
+    expect(fixed.stdout).toContain('DNS resolution')
+
+    // pass → fail is a regression, so the comparison exits 1 for CI to gate on.
+    const regressed = run(['diff', after, before])
+    expect(regressed.status).toBe(1)
+    expect(regressed.stdout).toContain('new problem')
+
+    // A file that is not a report is rejected with a usable message.
+    const notAReport = path.join(dir, 'not-a-report.json')
+    writeFileSync(notAReport, '{}')
+    const invalid = run(['diff', before, notAReport])
+    expect(invalid.status).toBe(1)
+    expect(invalid.stderr).toMatch(/no checks array/)
   })
 })

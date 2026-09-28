@@ -27,8 +27,9 @@ import {
   isNpmjsRegistry,
   shellProfilePaths,
 } from '../src/checks/env-hygiene.js'
+import { documentedIds } from '../src/checks/catalog.js'
+import { CHECKS, checksByCategory, findCheck } from '../src/checks/index.js'
 import { classifyGitPrereqs } from '../src/checks/git-prereqs.js'
-import { CHECKS } from '../src/checks/index.js'
 import {
   classifyLimits,
   countNodeProcesses,
@@ -858,21 +859,54 @@ describe('check registry', () => {
       'node-runtime',
       'arch-match',
       'global-install',
+      'command-shadowing',
       'binary-integrity',
       'install-paths',
+      'cache-integrity',
       'config-health',
+      'auth-session',
       'stale-lock',
+      'split-state',
+      'session-logs',
+      'crash-log',
+      'error-triage',
+      'state-growth',
       'dns',
       'network',
+      'proxy-trust',
+      'tls-chain',
+      'hosts-pin',
       'clock-skew',
       'env-hygiene',
       'node-conflicts',
       'git-prereqs',
-      'session-logs',
-      'crash-log',
-      'state-growth',
+      'watcher-limits',
+      'path-length',
+      'temp-health',
+      'port-availability',
       'storage',
       'resource-limits',
     ])
+  })
+
+  it('documents every registered check, and only registered checks', () => {
+    const ids = CHECKS.map((check) => check.id).sort()
+    expect(documentedIds().sort()).toEqual(ids)
+    for (const { doc } of checksByCategory().flatMap((group) => group.checks)) {
+      expect(doc).not.toBeNull()
+      expect(doc?.summary.length ?? 0).toBeGreaterThan(0)
+      expect(doc?.why.length ?? 0).toBeGreaterThan(0)
+    }
+  })
+
+  it('groups every check into exactly one category', () => {
+    const grouped = checksByCategory().flatMap((group) => group.checks)
+    expect(grouped).toHaveLength(CHECKS.length)
+  })
+
+  it('resolves a check by id, and refuses an unknown one', () => {
+    expect(findCheck('dns')?.id).toBe('dns')
+    expect(findCheck('DNS')?.id).toBe('dns')
+    expect(findCheck('not-a-check')).toBeNull()
   })
 })

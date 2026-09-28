@@ -1,21 +1,35 @@
 import { archMatchCheck } from './arch-match.js'
+import { authSessionCheck } from './auth-session.js'
 import { binaryIntegrityCheck } from './binary-integrity.js'
+import { cacheIntegrityCheck } from './cache-integrity.js'
+import { CATEGORY_ORDER, type CheckCategory } from './catalog.js'
 import { clockSkewCheck } from './clock-skew.js'
+import { commandShadowingCheck } from './command-shadowing.js'
 import { configHealthCheck } from './config-health.js'
 import { crashLogCheck } from './crash-log.js'
 import { dnsCheck } from './dns.js'
 import { envHygieneCheck } from './env-hygiene.js'
+import { errorTriageCheck } from './error-triage.js'
 import { gitPrereqsCheck } from './git-prereqs.js'
 import { globalInstallCheck } from './global-install.js'
+import { hostsPinCheck } from './hosts-pin.js'
 import { installPathsCheck } from './install-paths.js'
 import { networkCheck } from './network.js'
 import { nodeConflictsCheck } from './node-conflicts.js'
 import { nodeRuntimeCheck } from './node-runtime.js'
+import { pathLengthCheck } from './path-length.js'
+import { portAvailabilityCheck } from './port-availability.js'
+import { proxyTrustCheck } from './proxy-trust.js'
 import { resourceLimitsCheck } from './resource-limits.js'
 import { sessionLogsCheck } from './session-logs.js'
+import { splitStateCheck } from './split-state.js'
 import { staleLockCheck } from './stale-lock.js'
 import { stateGrowthCheck } from './state-growth.js'
 import { storageCheck } from './storage.js'
+import { tempHealthCheck } from './temp-health.js'
+import { tlsChainCheck } from './tls-chain.js'
+import { watcherLimitsCheck } from './watcher-limits.js'
+import { checkDoc, type CheckDoc } from './catalog.js'
 import {
   found,
   type CheckContext,
@@ -25,26 +39,39 @@ import {
 
 /**
  * Every diagnostic, in the order results are reported: the runtime and its
- * install first, then the local state it reads, then anything that needs the
- * network, then the heavier disk and process checks.
+ * install first, then the local state it reads, then the sessions and logs,
+ * then anything that needs the network, then the heavier environment, disk and
+ * process checks.
  */
 export const CHECKS: DiagnosticCheck[] = [
   nodeRuntimeCheck,
   archMatchCheck,
   globalInstallCheck,
+  commandShadowingCheck,
   binaryIntegrityCheck,
   installPathsCheck,
+  cacheIntegrityCheck,
   configHealthCheck,
+  authSessionCheck,
   staleLockCheck,
+  splitStateCheck,
+  sessionLogsCheck,
+  crashLogCheck,
+  errorTriageCheck,
+  stateGrowthCheck,
   dnsCheck,
   networkCheck,
+  proxyTrustCheck,
+  tlsChainCheck,
+  hostsPinCheck,
   clockSkewCheck,
   envHygieneCheck,
   nodeConflictsCheck,
   gitPrereqsCheck,
-  sessionLogsCheck,
-  crashLogCheck,
-  stateGrowthCheck,
+  watcherLimitsCheck,
+  pathLengthCheck,
+  tempHealthCheck,
+  portAvailabilityCheck,
   storageCheck,
   resourceLimitsCheck,
 ]
@@ -70,6 +97,33 @@ export function selectChecks(only?: string[]): DiagnosticCheck[] {
   const wanted = new Set(only.map((id) => id.trim()).filter(Boolean))
   const selected = CHECKS.filter((check) => wanted.has(check.id))
   return selected.length > 0 ? selected : CHECKS
+}
+
+/** One registered check by id, or `null`. */
+export function findCheck(id: string): DiagnosticCheck | null {
+  const wanted = id.trim().toLowerCase()
+  return (
+    CHECKS.find((check) => check.id === wanted) ??
+    // Accept a title or a `--only`-style list entry that is close enough.
+    CHECKS.find((check) => check.title.toLowerCase() === wanted) ??
+    null
+  )
+}
+
+export interface CategorisedChecks {
+  category: CheckCategory
+  checks: Array<{ check: DiagnosticCheck; doc: CheckDoc | null }>
+}
+
+/** Checks grouped by category, in the catalogue's own order. */
+export function checksByCategory(): CategorisedChecks[] {
+  const groups = CATEGORY_ORDER.map((category) => ({
+    category,
+    checks: CHECKS.filter(
+      (check) => (checkDoc(check.id)?.category ?? 'environment') === category,
+    ).map((check) => ({ check, doc: checkDoc(check.id) })),
+  }))
+  return groups.filter((group) => group.checks.length > 0)
 }
 
 /** Runs a single check, converting a thrown error into a failed result. */

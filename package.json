@@ -1,6 +1,6 @@
 {
   "name": "freebuff-doctor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Diagnose and fix common Freebuff problems from your terminal: system checks, a searchable FAQ, a troubleshooting wizard, and redacted support reports.",
   "keywords": [
     "freebuff",

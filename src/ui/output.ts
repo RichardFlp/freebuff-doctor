@@ -9,6 +9,7 @@ import {
   GLYPH,
   hyperlink,
   isInteractive,
+  isVerbose,
   STATUS_ICON,
   STATUS_LABEL,
   terminalWidth,
@@ -37,16 +38,74 @@ function indentFor(label: string, body: string): string {
   return `   ${c().dim(label)}  ${body}`
 }
 
+/** Human-readable duration, e.g. `420ms` or `1.4s`. */
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+/**
+ * A timing note for a result header. Fast checks stay quiet unless `--verbose`
+ * was asked for, so the report does not fill up with noise.
+ */
+export function durationNote(ms: number, always = false): string {
+  if (!always && ms < 250) return ''
+  return ` ${c().dim(`${GLYPH.timer} ${formatDuration(ms)}`)}`
+}
+
+/**
+ * A progress bar for long runs, e.g. `▰▰▰▰▱▱▱▱▱▱ 12/30`. Uses block
+ * characters rather than colour, so it survives a monochrome terminal.
+ */
+export function progressBar(
+  completed: number,
+  total: number,
+  width = 14,
+): string {
+  if (total <= 0) return ''
+  const safeTotal = Math.max(total, 1)
+  const ratio = Math.min(Math.max(completed / safeTotal, 0), 1)
+  const filled = Math.round(ratio * width)
+  const bar = `${'\u25b0'.repeat(filled)}${'\u25b1'.repeat(Math.max(0, width - filled))}`
+  return `${bar} ${String(completed).padStart(String(safeTotal).length)}/${safeTotal}`
+}
+
+/** A lighter-weight section heading used to group check results. */
+export function groupHeading(text: string, note?: string): void {
+  write(`${c().bold(text)}${note ? ` ${c().dim(note)}` : ''}`)
+}
+
+/**
+ * One compact line per group of results that need no explanation, so a clean
+ * run of thirty checks does not scroll the interesting parts off the screen.
+ */
+export function printCompactList(
+  label: string,
+  results: CheckResult[],
+  note?: string,
+): void {
+  if (results.length === 0) return
+  const ids = results.map((result) => result.id).join('  \u00b7  ')
+  write(
+    `${c().dim(GLYPH.bullet)} ${c().bold(label)}${note ? ` ${c().dim(note)}` : ''}`,
+  )
+  for (const line of wrap(ids, terminalWidth() - 4)) {
+    write(`  ${c().dim(line)}`)
+  }
+}
+
 /**
  * Prints one check result: a status line, the explanation, any extra context,
  * and the two things a user can act on — a fix command and the FAQ section.
  */
 export function printResult(
   result: CheckResult,
-  options: { width?: number } = {},
+  options: { width?: number; timings?: boolean } = {},
 ): void {
   const width = options.width ?? terminalWidth()
-  write(formatResultHeader(result))
+  write(
+    `${formatResultHeader(result)}${durationNote(result.durationMs, options.timings ?? isVerbose())}`,
+  )
   for (const line of wrap(result.message, width - 3)) {
     write(`   ${line}`)
   }
@@ -68,6 +127,11 @@ export function printResult(
         ),
       )
     }
+  }
+  // Every problem can be explained on its own, which is what makes a support
+  // thread self-serve rather than a screenshot.
+  if (result.status === 'fail' || result.status === 'warn') {
+    write(indentFor('why', c().dim(`fbdoc explain ${result.id}`)))
   }
 }
 

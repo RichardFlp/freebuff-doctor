@@ -25,7 +25,7 @@ $ fbdoc
 ```console
 $ fbdoc check
 
-Freebuff Doctor 0.1.1
+Freebuff Doctor 0.3.0
 ───────────────────────
 win32 10.0.26200 (x64) · Node v24.13.0
 
@@ -60,7 +60,7 @@ win32 10.0.26200 (x64) · Node v24.13.0
    Disk space and permissions look healthy (39 GB free).
 
 ╭ Freebuff Doctor ────────────────────────────────────────────────────────────────╮
-│ 9 checks · 8 passed · 1 warning                                                 │
+│ 30 checks · 22 passed · 5 skips                                                 │
 │                                                                                 │
 │ Next  Freebuff CLI installation: freebuff 0.0.118 is behind the latest release  │
 │       (0.1.2).                                                                  │
@@ -70,12 +70,14 @@ win32 10.0.26200 (x64) · Node v24.13.0
 ╰─────────────────────────────────────────────────────────────────────────────────╯
 ```
 
+Abridged for readability: the real run prints every check that needs attention in full, then collapses the rest into one line, and each result links to the `fbdoc explain <id>` documentation for it.
+
 The main menu (arrow keys, no flags to remember):
 
 ```console
 $ fbdoc
 
-Freebuff Doctor 0.1.1
+Freebuff Doctor 0.3.0
 win32 10.0.26200 (x64) · Node v24.13.0
 
 ? What would you like to do?
@@ -112,7 +114,10 @@ Freebuff — Support FAQ
 | `fbdoc faq --list` | Lists every FAQ section. |
 | `fbdoc wizard` | Guided Q&A that narrows the problem down and surfaces the matching FAQ section(s). |
 | `fbdoc report` | Generates a redacted Markdown support report. `--output <file>` writes it to disk. |
-| `fbdoc checks` | Lists every check id (handy for `--only`). |
+| `fbdoc checks` | Lists every check, grouped by what it covers (`--json` for machines). |
+| `fbdoc explain [id]` | Explains one check: what it reads, why it matters, the FAQ section behind it, and how to run it alone. With no id, lists them all. |
+| `fbdoc env` | Prints your setup — runtime, `PATH` in search order, and the variables that change behaviour — with secrets redacted. |
+| `fbdoc diff <before> <after>` | Compares two saved `fbdoc check --json` reports and reports what was fixed, what regressed, and what is still outstanding. Exits `1` on a regression. |
 | `fbdoc --help`, `fbdoc -h` | Help for the top level and for every subcommand. |
 | `fbdoc --version`, `fbdoc -v` | Prints the installed version. |
 
@@ -127,8 +132,10 @@ These work on the top level and on any subcommand, in either position (`fbdoc --
 | `--timeout <ms>` | Per-network-operation timeout, clamped to 1–60 seconds. Default `8000`. |
 | `--strict` | Treat warnings as failures, so CI can gate on them. |
 | `--no-color` | Disable ANSI colour. `NO_COLOR` and piped output do this automatically. |
-| `--json` | (`check`, `faq`) Emit machine-readable JSON on stdout. |
+| `--json` | (`check`, `faq`, `checks`, `explain`, `env`, `diff`) Emit machine-readable JSON on stdout. |
 | `--only <ids>` | (`check`, `report`) Comma-separated check ids, e.g. `--only dns,network`. |
+| `--all` | (`check`) Print every result in full, including the ones that passed. |
+| `--quiet` | (`check`) Print only the checks that need attention. |
 | `--limit <n>` | (`faq`) Maximum number of matches to show. |
 | `--output <file>` | (`report`) Write the report to a file instead of stdout. |
 
@@ -139,25 +146,39 @@ These work on the top level and on any subcommand, in either position (`fbdoc --
 | `node-runtime` | Node.js and npm | Runtime version, whether it's an LTS line, npm presence and version. |
 | `arch-match` | Runtime and machine architecture | Compares `process.arch` with what the machine really is (`uname -m`, `PROCESSOR_ARCHITECTURE`, Rosetta detection) and flags a 32-bit runtime on a 64-bit machine. |
 | `global-install` | Freebuff CLI installation | Global `freebuff`/`codebuff` packages (npm, plus bun/pnpm fallbacks), the installed version vs. the latest on npm, and whether the binary is actually on `PATH`. |
+| `command-shadowing` | Shadowed commands and PATH | Every distinct `freebuff`/`codebuff` on `PATH` in search order (more than one means updates hit a copy the shell never runs), plus directories your `PATH` lists twice. |
 | `binary-integrity` | Installed binary is runnable | Whether the command is complete: non-empty, executable, not symlinked to a vanished target, not macOS-quarantined, and pointing at a script that still exists. Nothing is executed. |
 | `install-paths` | Install and state directories | `~/.config/manicode`, `~/.config/freebuff-desktop`, `~/.config/codebuff`, and the platform desktop install location; readability; whether `projects/` exists. |
+| `cache-integrity` | Cached engine and downloads | Interrupted downloads (`*.part`, `*.crdownload`, `*.tmp`) and superseded engine copies (`freebuff.exe.old.<timestamp>`) that an interrupted update left behind — on a long-lived install these add up to hundreds of megabytes. |
 | `config-health` | Settings and state files | Parses every settings/state JSON (JSONC tolerated); a file that no longer parses fails with a move-it-aside command, and interrupted-write leftovers warn. |
+| `auth-session` | Saved login and credentials | Finds the credential file, checks it parses, holds a token, has not expired, and is not readable by other accounts. Token values are never read out or reported. |
 | `stale-lock` | Orphaned locks and processes | Lock and pid files (including Electron's `SingletonLock`) under the state and project directories, checked against live processes and this machine's hostname. |
+| `split-state` | Where local history lives | Counts sessions per state directory. CLI and desktop keeping separate stores is expected; sessions stranded in the legacy `codebuff` directory are not, and look exactly like lost history. |
+| `session-logs` | Local sessions and chat logs | `manicode/projects/*/chats/*/log.jsonl` and `freebuff-desktop/projects/*/desktop-v2.db`, counts, the newest session, and readability. |
+| `crash-log` | Crash logs | Reads the tail of `orchestrator-stderr.log` and only surfaces a **fatal** entry that is recent (within 72 hours). |
+| `error-triage` | Recent errors in your logs | Scans the tails of log files for actionable signatures (`ENOSPC`, `EADDRINUSE`, `EACCES`, out-of-memory, TLS failures, `ECONNRESET`) and turns the one you actually hit into a next step. Chat transcripts are never scanned, so pasted code cannot trigger it. |
+| `state-growth` | Local session data size | Per-project log and database sizes: names the largest single file (a runaway log past 500 MB warns) and the biggest projects, so you know *what* is using the volume. |
 | `dns` | DNS resolution | Resolves `freebuff.com` with your resolver *and* with `8.8.8.8`, then flags hijacks (private/loopback/CGNAT answers) and disagreements. |
 | `network` | Network reachability | HTTPS to `freebuff.com` and `registry.npmjs.org`, with timings and proxy-environment detection. |
+| `proxy-trust` | Proxy configuration | Reads `HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`/`NO_PROXY`, opens a TCP connection to the configured proxy, and flags a proxy that is down, a `NO_PROXY` that forgets loopback, and the case where Node will ignore the proxy entirely (env-proxy support is off). Proxy credentials are stripped before anything is printed. |
+| `tls-chain` | TLS certificate chain | Completes a real TLS handshake and walks the returned chain. Node ships its own CA list and ignores the OS trust store, so a corporate root your browser trusts can break only Freebuff — the classic interception symptom. |
+| `hosts-pin` | Hosts file overrides | Parses the system hosts file for entries naming a Freebuff domain; loopback or private pins fail, stale public pins warn. |
 | `clock-skew` | System clock and TLS trust | Compares the local clock with a server `Date` header (warn past 5 minutes, fail past an hour) and audits `NODE_TLS_REJECT_UNAUTHORIZED`, `NODE_EXTRA_CA_CERTS` and `SSL_CERT_FILE`. |
 | `env-hygiene` | Environment variables | `NODE_OPTIONS` (`--openssl-legacy-provider`, absurd heap caps, missing loaders), `NODE_PATH`, `NPM_CONFIG_PREFIX`, `ELECTRON_RUN_AS_NODE`, and `.npmrc` files that redirect npm or store a token in the project. |
 | `node-conflicts` | Conflicting Node.js installs | Groups every `node`/`npm`/`npx` on `PATH` by install manager (nvm, fnm, Volta, Homebrew, Scoop, winget, system) and warns when more than one owns `node` — the known cause of endless update loops. |
 | `git-prereqs` | Git availability and config | `git --version`, a global `user.name`/`user.email` (commits fail without them), `core.longpaths` and `core.autocrlf` mismatches, and git's `dubious ownership` refusal. |
-| `session-logs` | Local sessions and chat logs | `manicode/projects/*/chats/*/log.jsonl` and `freebuff-desktop/projects/*/desktop-v2.db`, counts, the newest session, and readability. |
-| `crash-log` | Crash logs | Reads the tail of `orchestrator-stderr.log` and only surfaces a **fatal** entry that is recent (within 72 hours). |
-| `state-growth` | Local session data size | Per-project log and database sizes: names the largest single file (a runaway log past 500 MB warns) and the biggest projects, so you know *what* is using the volume. |
+| `watcher-limits` | File-watching limits | Linux `fs.inotify.max_user_watches`/`max_user_instances` and macOS `kern.maxfiles`/`kern.maxfilesperproc`. When these are low, watching a large repository silently stops noticing edits. |
+| `path-length` | Path length limits | Measures the real paths in your Freebuff directories against Windows' 260-character limit. `git-prereqs` reports whether long-path support is *configured*; this reports whether it *matters*. |
+| `temp-health` | Temporary directory | `TMPDIR`/`TEMP` exists, is writable, has room, and is not clogged with stale files. A full or missing temp directory fails updates with errors that never mention the cause. |
+| `port-availability` | Local ports and running instances | Finds Freebuff's own processes and which of them hold a listening socket. Two listening instances usually means an earlier session never shut down and still owns the port a new launch wants. |
 | `storage` | Disk space and permissions | Free space on the volume holding your Freebuff state, plus write access to it and to npm's global directory. |
 | `resource-limits` | Memory, file descriptors and processes | Effective `ulimit -n`, free RAM, and the number of live Node processes — and it ties a recorded out-of-memory crash back to the memory available right now. |
 
-Checks run concurrently but are always reported in the order above. Each result carries a one-line explanation, an optional `fix` command, and a link to the FAQ section that covers it. `fbdoc checks` prints the ids for use with `--only`.
+Checks run concurrently but are always reported in the order above. Each result carries a one-line explanation, an optional `fix` command, a link to the FAQ section that covers it, and the `fbdoc explain <id>` command that documents it. `fbdoc checks` prints the ids for use with `--only`.
 
-Two of them are deliberately conservative. `clock-skew` still audits your TLS environment under `--offline`, because a stale `NODE_EXTRA_CA_CERTS` is exactly what breaks HTTPS, and `binary-integrity` inspects the install without ever executing the CLI, so running the doctor can never trigger an engine download or a self-update as a side effect.
+A few of them are deliberately conservative. `clock-skew` still audits your TLS environment under `--offline`, because a stale `NODE_EXTRA_CA_CERTS` is exactly what breaks HTTPS, and `binary-integrity` inspects the install without ever executing the CLI, so running the doctor can never trigger an engine download or a self-update as a side effect. `split-state` treats the CLI and desktop app keeping separate histories as normal, and only complains about sessions stranded in the legacy directory. `error-triage` reads log tails but never chat transcripts, so code you pasted into a conversation cannot raise a false alarm.
+
+The output is built to be read top-down: everything that needs attention is printed in full first, then healthy checks collapse to a single line you can expand with `--all`. `fbdoc diff before.json after.json` answers the follow-up question — *did the fix actually work?*
 
 ## FAQ search
 
@@ -194,7 +215,7 @@ $ fbdoc check --json
 
 ```console
 $ fbdoc check --json --offline | jq '.summary'
-{ "total": 18, "pass": 15, "warn": 0, "fail": 0, "skip": 3 }
+{ "total": 30, "pass": 22, "warn": 0, "fail": 0, "skip": 5 }
 ```
 
 ```yaml
@@ -219,6 +240,6 @@ $ npm run typecheck
 $ npm run dev -- check   # run the TypeScript source directly with tsx
 ```
 
-The tests cover the FAQ parser and ranking, the pure decision logic behind every check (DNS classification, crash-log classification, Node-manager detection, architecture matching, config parsing, lock parsing, clock skew, environment audit, git config, resource limits, growth thresholds, redaction, semver), and the built CLI itself: exit codes, `--json` shape, `NO_COLOR`, `--only` and report redaction.
+The tests cover the FAQ parser and ranking, the pure decision logic behind every check (DNS classification, crash-log classification, Node-manager detection, architecture matching, config parsing, lock parsing, clock skew, environment audit, git config, resource limits, growth thresholds, proxy parsing, TLS chain walking, hosts parsing, credential inspection, log triage, cache artefacts, watcher limits, temp health, path lengths, listening sockets, report comparison, redaction, semver), and the built CLI itself: exit codes, `--json` shape, `NO_COLOR`, `--only`, `explain`, `env`, `diff` and report redaction. One test asserts that every registered check is documented and that every FAQ link a check can emit points at a section that exists.
 
 Layout:
