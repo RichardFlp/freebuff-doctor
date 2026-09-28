@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command, CommanderError } from 'commander'
 
-import { checkDoc } from './checks/catalog.js'
+import { CATEGORY_LABEL, checkDoc } from './checks/catalog.js'
 import { checksByCategory, listChecks } from './checks/index.js'
 import { runCheckCommand } from './commands/check.js'
 import { runDiffCommand } from './commands/diff.js'
@@ -255,7 +255,7 @@ export function buildProgram(): Command {
       write(`${c().bold(`${rows.length} diagnostic checks`)}`)
       write('')
       for (const group of checksByCategory()) {
-        write(`  ${c().bold(group.category)}`)
+        write(`  ${c().bold(CATEGORY_LABEL[group.category])}`)
         for (const { check: entry, doc } of group.checks) {
           write(
             `    ${c().cyan(padTo(entry.id, width))}  ${c().dim(doc?.summary ?? entry.title)}`,
