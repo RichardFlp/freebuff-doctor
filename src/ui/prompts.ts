@@ -62,6 +62,26 @@ export async function ask(options: {
   }
 }
 
+/**
+ * Free-text input that is never echoed to the terminal, for API keys and other
+ * secrets. Falls back to a normal prompt when the runtime has no way to hide it.
+ */
+export async function askSecret(options: {
+  message: string
+  mask?: string
+}): Promise<string | null> {
+  const { password } = await import('@inquirer/prompts')
+  try {
+    return await password({
+      message: options.message,
+      mask: options.mask ?? '•',
+    })
+  } catch (error) {
+    if (isCancellation(error)) return null
+    throw error
+  }
+}
+
 /** Yes/no prompt. */
 export async function confirm(options: {
   message: string

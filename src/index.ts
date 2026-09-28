@@ -27,6 +27,35 @@ export {
 export type { FaqIndex, FaqMatch, MatchDecision } from './faq/search.js'
 export { buildSupportReport, collectLogExcerpts } from './report/support.js'
 export type { SupportReportInput, LogExcerpt } from './report/support.js'
+export { buildHelperReport } from './report/helper.js'
+export type { HelperReportInput } from './report/helper.js'
+export {
+  AI_MODEL,
+  GROQ_API_BASE,
+  keyFile,
+  looksLikeApiKey,
+  maskApiKey,
+  readStoredKey,
+  resolveApiKey,
+  storeApiKey,
+} from './ai/config.js'
+export type { ApiKeySource } from './ai/config.js'
+export { AiError, answerFromBody, chat, describeFailure } from './ai/client.js'
+export type { ChatMessage, ChatOptions } from './ai/client.js'
+export {
+  buildFindings,
+  buildSystemPrompt,
+  buildUserMessage,
+} from './ai/prompt.js'
+export type { AssistantContext } from './ai/prompt.js'
 export { redact, redactLine } from './util/redact.js'
+export {
+  downloadsCandidates,
+  reportFileName,
+  resolveDownloadsDir,
+} from './util/downloads.js'
+export type { DownloadsResolution } from './util/downloads.js'
+export { collectSnapshot, INTERESTING_VARIABLES } from './util/environment.js'
+export type { EnvironmentSnapshot } from './util/environment.js'
 export { resolvePlatformPaths } from './util/platform.js'
 export { doctorVersion } from './util/version.js'

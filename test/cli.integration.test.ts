@@ -1,5 +1,11 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -54,6 +60,8 @@ describe.skipIf(!existsSync(cli))('fbdoc CLI', () => {
       'faq',
       'wizard',
       'report',
+      'export',
+      'ask',
       'menu',
       'checks',
     ]) {
@@ -186,6 +194,20 @@ describe.skipIf(!existsSync(cli))('fbdoc CLI', () => {
     }
   })
 
+  it('never leaks the home directory through JSON-escaped paths', () => {
+    // JSON doubles every backslash, so a plain substring check on the raw text
+    // can miss a leak: collapse separator runs and compare that instead.
+    const home = process.env.USERPROFILE ?? process.env.HOME ?? ''
+    if (!home || home.includes('[redacted')) return
+    const needle = home.replace(/\\/g, '/').replace(/\/+/g, '/').toLowerCase()
+    const result = run(['export', '--offline', '--stdout'])
+    const normalized = result.stdout
+      .replace(/\\/g, '/')
+      .replace(/\/+/g, '/')
+      .toLowerCase()
+    expect(normalized).not.toContain(needle)
+  })
+
   it('writes the report to a file with --output', () => {
     const target = path.join(root, '.fbdoc-integration-report.md')
     try {
@@ -203,6 +225,88 @@ describe.skipIf(!existsSync(cli))('fbdoc CLI', () => {
         ])
       }
     }
+  })
+
+  it('prints the detailed helper report with --stdout', () => {
+    const result = run(['export', '--offline', '--stdout'])
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('# Freebuff Doctor — detailed report')
+    expect(result.stdout).toContain('## Every check')
+    expect(result.stdout).toContain('## Findings in detail')
+    expect(result.stdout).toContain('## Machine-readable results')
+    // stdout must be the document and nothing else.
+    expect(result.stdout).not.toContain('Exported a detailed report')
+  })
+
+  it('exports a detailed report to a folder of your choosing', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'fbdoc-export-'))
+    const result = run(['export', '--offline', '--dir', dir])
+    expect(result.status).toBe(0)
+    expect(result.stderr).toContain('Exported a detailed report')
+
+    const written = readdirSync(dir).filter((name) => name.endsWith('.md'))
+    expect(written).toHaveLength(1)
+    expect(written[0]).toMatch(
+      /^freebuff-doctor-report-\d{4}-\d{2}-\d{2}-\d{6}\.md$/,
+    )
+
+    const report = readFileSync(path.join(dir, written[0] ?? ''), 'utf8')
+    expect(report).toContain('# Freebuff Doctor — detailed report')
+    expect(report).toContain('node-runtime')
+    // The user's home directory must never appear verbatim, in any spelling.
+    const home = process.env.USERPROFILE ?? process.env.HOME ?? ''
+    if (home && !home.includes('[redacted')) {
+      const normalized = report
+        .replace(/\\/g, '/')
+        .replace(/\/+/g, '/')
+        .toLowerCase()
+      expect(normalized).not.toContain(
+        home.replace(/\\/g, '/').replace(/\/+/g, '/').toLowerCase(),
+      )
+    }
+  })
+
+  it('explains a folder it cannot create instead of crashing', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'fbdoc-export-'))
+    const blocker = path.join(dir, 'file-not-a-folder')
+    writeFileSync(blocker, 'this is a file')
+    const result = run([
+      'export',
+      '--offline',
+      '--dir',
+      path.join(blocker, 'in'),
+    ])
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('fbdoc export --dir')
+  })
+
+  it('asks for a question when it has no terminal to prompt on', () => {
+    const result = run(['ask'])
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('needs a question')
+    expect(result.stderr).toContain('fbdoc ask "')
+  })
+
+  it('refuses to pretend the assistant works offline', () => {
+    const result = run(['ask', 'why is freebuff broken?', '--offline'])
+    expect(result.status).toBe(1)
+    expect(result.stderr).toMatch(/needs the network/i)
+    expect(result.stderr).toMatch(/--offline/)
+  })
+
+  it('explains how to connect a key when none is configured', () => {
+    // A throwaway config root and no GROQ_API_KEY: the run must stop before
+    // any request, so this stays a test with no network in it.
+    const configRoot = mkdtempSync(path.join(tmpdir(), 'fbdoc-ai-'))
+    const result = run(['ask', 'why is freebuff broken?', '--no-checks'], {
+      XDG_CONFIG_HOME: configRoot,
+      GROQ_API_KEY: '',
+    })
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('No Groq API key found')
+    expect(result.stderr).toContain('GROQ_API_KEY')
+    expect(result.stderr).toContain('console.groq.com/keys')
+    expect(result.stdout).not.toContain('Freebuff assistant')
   })
 
   it('lists every check as JSON with its category', () => {
@@ -247,8 +351,13 @@ describe.skipIf(!existsSync(cli))('fbdoc CLI', () => {
 
     const home = process.env.USERPROFILE ?? process.env.HOME ?? ''
     if (home) {
-      const normalized = result.stdout.replace(/\\/g, '/').toLowerCase()
-      expect(normalized).not.toContain(home.replace(/\\/g, '/').toLowerCase())
+      const normalized = result.stdout
+        .replace(/\\/g, '/')
+        .replace(/\/+/g, '/')
+        .toLowerCase()
+      expect(normalized).not.toContain(
+        home.replace(/\\/g, '/').replace(/\/+/g, '/').toLowerCase(),
+      )
     }
   })
 

@@ -74,9 +74,23 @@ export function describePlatform(): string {
   return `${process.platform} ${release} (${process.arch})`
 }
 
+/** Escapes the regex metacharacters in a literal string. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** A path as it appears inside JSON, where every backslash is doubled. */
+function jsonSpelling(value: string): string {
+  return value.replace(/\\/g, '\\\\')
+}
+
 /**
  * Replaces the user's home directory and username with placeholders so a report
  * can be pasted into a public channel without leaking identity.
+ *
+ * A path that has been through `JSON.stringify` doubles every backslash, so each
+ * spelling of home is replaced — otherwise the copy inside a report's embedded
+ * JSON would survive the pass and leak the whole home directory.
  */
 export function anonymizePath(
   value: string,
@@ -85,20 +99,27 @@ export function anonymizePath(
 ): string {
   if (!value) return value
   let result = value
-  // Match both native and forward-slash spellings of home.
-  const variants = [home, home.replace(/\\/g, '/')]
-  for (const variant of variants) {
-    if (variant && result.includes(variant)) {
-      result = result.split(variant).join('~')
+
+  for (const spelling of [home, home.replace(/\\/g, '/'), jsonSpelling(home)]) {
+    if (spelling && result.includes(spelling)) {
+      result = result.split(spelling).join('~')
     }
   }
+
   const username = path.basename(home)
   if (username && platform === 'win32') {
-    const escaped = username.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    result = result.replace(
-      new RegExp(`\\\\Users\\\\${escaped}`, 'gi'),
-      '\\Users\\<user>',
-    )
+    // `\Users\<name>` in plain text and the JSON-escaped spelling of it.
+    const segments: Array<[string, string]> = [
+      [`\\Users\\${username}`, '\\Users\\<user>'],
+      [`\\\\Users\\\\${username}`, '\\\\Users\\\\<user>'],
+    ]
+    for (const [needle, replacement] of segments) {
+      if (!result.includes(needle)) continue
+      result = result.replace(
+        new RegExp(escapeRegExp(needle), 'gi'),
+        replacement,
+      )
+    }
   }
   return result
 }

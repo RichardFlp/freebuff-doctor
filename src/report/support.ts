@@ -184,18 +184,21 @@ export function buildSupportReport(input: SupportReportInput): string {
     context.home,
   )
 
-  let note: string
-  if (redactions > 0) {
-    note = `_Redacted automatically by freebuff-doctor: ${redactions} value(s) that looked like a token, email or credential were replaced${anonymized ? ', and your home directory was replaced with ~' : ''}._`
-  } else if (anonymized) {
-    note =
-      '_Checked by freebuff-doctor: nothing looked like a token, email or credential; your home directory was replaced with ~._'
-  } else {
-    note =
-      '_Checked by freebuff-doctor: no tokens, emails, credentials or personal paths were found._'
-  }
+  return `${text}\n---\n${redactionNote(redactions, anonymized)}\n`
+}
 
-  return `${text}\n---\n${note}\n`
+/**
+ * The closing honesty line shared by both reports: what the redactor actually
+ * changed, rather than a blanket "this is safe to paste".
+ */
+export function redactionNote(redactions: number, anonymized: boolean): string {
+  if (redactions > 0) {
+    return `_Redacted automatically by freebuff-doctor: ${redactions} value(s) that looked like a token, email or credential were replaced${anonymized ? ', and your home directory was replaced with ~' : ''}._`
+  }
+  if (anonymized) {
+    return '_Checked by freebuff-doctor: nothing looked like a token, email or credential; your home directory was replaced with ~._'
+  }
+  return '_Checked by freebuff-doctor: no tokens, emails, credentials or personal paths were found._'
 }
 
 function describeOutcome(summary: CheckSummary): string {

@@ -3,9 +3,11 @@ import { Command, CommanderError } from 'commander'
 
 import { CATEGORY_LABEL, checkDoc } from './checks/catalog.js'
 import { checksByCategory, listChecks } from './checks/index.js'
+import { runAskCommand } from './commands/ai.js'
 import { runCheckCommand } from './commands/check.js'
 import { runDiffCommand } from './commands/diff.js'
 import { runEnvCommand } from './commands/env.js'
+import { runExportCommand } from './commands/export.js'
 import { runExplainCommand } from './commands/explain.js'
 import { runFaqCommand } from './commands/faq.js'
 import { runMenu } from './commands/menu.js'
@@ -34,7 +36,10 @@ Examples:
   $ fbdoc faq "cant connect"     Search the FAQ
   $ fbdoc wizard                 Guided troubleshooting
   $ fbdoc env                    Your setup, with paths and secrets redacted
-  $ fbdoc report > report.md     Redacted report for a help thread
+  $ fbdoc report > report.md     Short redacted report for a help thread
+  $ fbdoc export                 Detailed .md report saved to your Downloads folder
+  $ fbdoc ask "why won't it start?"   Run the checks, then ask Groq's gpt-oss-20b
+  $ fbdoc ask                    Same, but as an interactive chat
   $ fbdoc diff before.json after.json   Did the fix actually work?
 
 Exit codes:
@@ -210,6 +215,43 @@ export function buildProgram(): Command {
     process.exitCode = await runReportCommand({
       ...options,
       ...(output ? { output } : {}),
+    })
+  })
+
+  const exportCommand = program
+    .command('export')
+    .description(
+      'Write a detailed, redacted report to your Downloads folder for Freebuff helpers',
+    )
+    .option('--dir <folder>', 'write into this folder instead of Downloads')
+    .option('--stdout', 'print the report instead of writing a file')
+  addCommonOptions(exportCommand).action(async () => {
+    const options = resolveOptions(program, exportCommand)
+    applyGlobals(options)
+    const opts = exportCommand.opts()
+    process.exitCode = await runExportCommand({
+      ...options,
+      ...(typeof opts.dir === 'string' ? { dir: opts.dir } : {}),
+      stdout: Boolean(opts.stdout),
+    })
+  })
+
+  const ask = program
+    .command('ask [question]')
+    .description(
+      'Run the diagnostics, then ask the AI assistant (Groq, gpt-oss-20b) how to fix what it found',
+    )
+    .option('--only <ids>', 'comma-separated check ids to run first')
+    .option(
+      '--no-checks',
+      'skip the diagnostics and answer from the question alone',
+    )
+  addCommonOptions(ask).action(async (question: string | undefined) => {
+    const options = resolveOptions(program, ask)
+    applyGlobals(options)
+    process.exitCode = await runAskCommand(question, {
+      ...options,
+      diagnostics: ask.opts().checks !== false,
     })
   })
 

@@ -10,10 +10,11 @@ https://github.com/user-attachments/assets/b5a77648-8af7-434b-bef5-b1d79967ca56
 
 `freebuff-doctor` installs one command, `fbdoc`, which combines:
 
-1. **Nine automated checks** of your machine, network and Freebuff install.
+1. **Thirty automated checks** of your machine, network and Freebuff install.
 2. **A searchable, offline FAQ** — fuzzy enough that `cant connect` still finds the Network Issues answer.
 3. **A troubleshooting wizard** for when you aren't sure what's wrong.
-4. **A redacted support report** you can paste straight into a Discord `#help` thread.
+4. **An on-demand AI assistant** — after a run, ask Groq's `gpt-oss-20b` to explain what the checks found and how to fix it (`fbdoc ask`).
+5. **A redacted report you can paste into Discord** — or export as a detailed `.md` file for a Freebuff helper, mod or support member.
 
 ```console
 $ npm install -g freebuff-doctor
@@ -25,68 +26,116 @@ $ fbdoc
 ```console
 $ fbdoc check
 
-Freebuff Doctor 0.3.0
+Freebuff Doctor 0.5.0
 ───────────────────────
 win32 10.0.26200 (x64) · Node v24.13.0
 
-✅ Node.js and npm
-   Node.js v24.13.0 with npm 11.6.2.
 
-⚠️  Freebuff CLI installation
+Needs attention · 4 of 30 checks
+
+⚠️  Freebuff CLI installation ⏱ 374ms
    freebuff 0.0.118 is behind the latest release (0.1.2).
    › Command: ~\AppData\Roaming\npm\freebuff.CMD
    fix  npm i -g freebuff@latest
    faq  Crash on Start / Updating (fbdoc faq "Crash on Start / Updating")
+   why  fbdoc explain global-install
 
-✅ DNS resolution
-   freebuff.com resolves normally.
-   › Your resolver returns: 216.24.57.1
-   › Public DNS (8.8.8.8) returns: 216.24.57.1
+⚠️  Shadowed commands and PATH
+   Your PATH lists the same 15 directories more than once, which slows down
+   every command lookup and hides stale tools.
+   › Repeated PATH entry: C:\WINDOWS\system32
+   › Repeated PATH entry: C:\Program Files\nodejs
+   › … 13 more repeats
+   faq  Troubleshooting (Official) (fbdoc faq "Troubleshooting (Official)")
+   why  fbdoc explain command-shadowing
 
-✅ Network reachability
-   Reached https://freebuff.com/ in 690 ms and the npm registry is reachable.
+⚠️  Cached engine and downloads
+   An earlier version of the engine is still cached (237 MB across 2 copies) —
+   disk space an interrupted update never reclaimed.
+   › Superseded engine copy: ~\.config\manicode\freebuff.exe.old.1788459782441
+     (120 MB)
+   › The superseded copies are not read by anything; removing them only frees
+     space.
+   fix  del "~\.config\manicode\*.old.*"
+   faq  Crash on Start / Updating (fbdoc faq "Crash on Start / Updating")
+   why  fbdoc explain cache-integrity
 
-✅ Conflicting Node.js installs
-   Only one Node.js install was found on PATH (a system installer).
+⚠️  Git availability and config
+   git is not set up for long paths, so files nested deeper than 260 characters
+   cannot be checked out or committed on Windows.
+   › git version 2.52.0.windows.1
+   fix  git config --global core.longpaths true
+   faq  Troubleshooting (Official) (fbdoc faq "Troubleshooting (Official)")
+   why  fbdoc explain git-prereqs
 
-✅ Local sessions and chat logs
-   Session history is present and readable (120 file(s)).
-   › 109 CLI chat log(s) and 11 desktop database(s).
+Everything else
+• 26 checks passed
+  node-runtime  ·  arch-match  ·  binary-integrity  ·  install-paths  ·
+  config-health  ·  auth-session  ·  stale-lock  ·  split-state  ·
+  session-logs  ·  crash-log  ·  error-triage  ·  state-growth  ·  dns  ·
+  network  ·  proxy-trust  ·  tls-chain  ·  hosts-pin  ·  clock-skew  ·
+  env-hygiene  ·  node-conflicts  ·  watcher-limits  ·  path-length  ·
+  temp-health  ·  port-availability  ·  storage  ·  resource-limits
 
-✅ Crash logs
-   No orchestrator-stderr.log found — there are no recorded engine crashes.
 
-✅ Disk space and permissions
-   Disk space and permissions look healthy (39 GB free).
+Freebuff Doctor
+30 checks · 26 passed · 4 warnings
 
-╭ Freebuff Doctor ────────────────────────────────────────────────────────────────╮
-│ 30 checks · 22 passed · 5 skips                                                 │
-│                                                                                 │
-│ Next  Freebuff CLI installation: freebuff 0.0.118 is behind the latest release  │
-│       (0.1.2).                                                                  │
-│ Run   npm i -g freebuff@latest                                                  │
-│ FAQ   Crash on Start / Updating                                                 │
-│       fbdoc faq "Crash on Start / Updating"                                     │
-╰─────────────────────────────────────────────────────────────────────────────────╯
+Next  Freebuff CLI installation: freebuff 0.0.118 is behind the latest
+      release (0.1.2).
+Run   npm i -g freebuff@latest
+FAQ   Crash on Start / Updating
+      fbdoc faq "Crash on Start / Updating"
+
+30 checks in 1.2s on win32 10.0.26200 (x64).
+
+→ Need detail on any check? Run `fbdoc explain <id>`.
+
+→ Paste `fbdoc report` into a Discord help thread if you need a
+second opinion.
 ```
 
-Abridged for readability: the real run prints every check that needs attention in full, then collapses the rest into one line, and each result links to the `fbdoc explain <id>` documentation for it.
+Abridged for readability and privacy: the real run prints every repeated `PATH` entry, and prints your own home directory where a fix command needs it (here collapsed to `~`). Everything that needs attention comes first — in full, with the command that fixes it and the `fbdoc explain <id>` page for it — then healthy checks collapse into the id lists above. On an interactive terminal the summary is drawn in a box instead of the plain form shown here, `--all` expands every result, and `--quiet` prints only the problems.
 
 The main menu (arrow keys, no flags to remember):
 
 ```console
 $ fbdoc
 
-Freebuff Doctor 0.3.0
+Freebuff Doctor 0.5.0
 win32 10.0.26200 (x64) · Node v24.13.0
 
 ? What would you like to do?
 ❯ Run diagnostics
   Search the FAQ
   Troubleshooting wizard
-  Export a support report
+  Connect Groq API for AI assistance
+  Export a report for Freebuff helpers
+  Quick report (paste into Discord)
   Quit
 ```
+
+### Reporting a problem
+
+There are two report sizes, for two different audiences. Both are redacted automatically: tokens, emails, credentials and your home directory never make it into the output.
+
+| | `fbdoc export` | `fbdoc report` |
+| --- | --- | --- |
+| Audience | Freebuff helpers, mods and support | A Discord `#help` message |
+| Result | A `.md` file saved to your **Downloads** folder | Text printed to your terminal |
+| Length | As long as it needs to be (~1200 lines) | Aimed at Discord's 2000-character limit, and warns you when it cannot fit |
+| Contains | Every check with its raw data, your environment, `PATH` in search order, state directories, the engine log tail, a machine-readable copy of the results, and a section for what you have already tried | The findings, the suggested next step and the last few log lines |
+
+```console
+$ fbdoc export
+
+✔ Exported a detailed report
+  C:\Users\you\Downloads\freebuff-doctor-report-2026-09-28-153012.md
+  41 KB · 1201 lines · 0 failed, 3 warnings
+  → Share this file with a Freebuff helper, mod or support member — attach it to a Discord thread or paste it into an issue.
+```
+
+Pick "Export a report for Freebuff helpers" in the menu to get the same thing without remembering a flag.
 
 Searching the FAQ from the shell:
 
@@ -104,16 +153,73 @@ Freebuff — Support FAQ
   ...
 ```
 
+## AI assistance (optional, Groq)
+
+Everything else here works offline and without an account. When you would rather not wait for a second opinion, `fbdoc` can ask one: it talks to **Groq** — the one provider it supports — using the **`openai/gpt-oss-20b`** model.
+
+```console
+$ fbdoc ask "freebuff keeps telling me to update but nothing changes. what should I do?"
+
+What the assistant has been told
+──────────────────────────────
+30 checks · 22 passed · 3 warnings · 0 failed · 5 skipped
+
+⚠️  Freebuff CLI installation ⏱ 374ms
+   freebuff 0.0.118 is behind the latest release (0.1.2).
+   fix  npm i -g freebuff@latest
+   faq  Crash on Start / Updating (fbdoc faq "Crash on Start / Updating")
+   why  fbdoc explain global-install
+
+(…every check that needs attention, in full…)
+
+Using GROQ_API_KEY from your environment (gsk_fake…TEST).
+
+Freebuff assistant
+The warning that Freebuff is “behind the latest release” is the most likely reason it keeps prompting you to update. Update the global CLI and clean the old engine cache, then restart your terminal.
+```
+
+Abridged: the real run prints every finding the assistant was given, and then the answer, which the CLI **streams in as it arrives**. The answer is about *your* machine — it names the checks, quotes their `fix` commands, and suggests the FAQ section behind each one.
+
+Pick **Connect Groq API for AI assistance** in the menu for an interactive chat instead: same diagnostics, then as many follow-ups as you need, with `exit` to leave.
+
+### Connecting a key
+
+Create a free key at [console.groq.com/keys](https://console.groq.com/keys). `fbdoc` looks for it in this order:
+
+1. `GROQ_API_KEY` in your environment.
+2. The saved key at `<config root>/freebuff-doctor/groq.json`.
+3. Otherwise the menu asks you to paste one in (hidden as you type) and offers to save it — the only thing `fbdoc` ever writes outside your Downloads folder, created with owner-only permissions.
+
+```console
+# For one session, nothing stored:
+$ GROQ_API_KEY=gsk_... fbdoc ask "why is my install stale?"
+
+# Or connect it once from the menu and then never think about it again:
+$ fbdoc
+```
+
+Delete that `groq.json` to forget the key. It is never printed back in full, never written into a report, and the same redactor that scrubs reports catches `gsk_…` values anywhere else they might appear — including text you paste into the chat.
+
+### What leaves your machine
+
+- **Sent to Groq:** your question, plus a redacted digest built from the diagnostics — each finding with its `fix`, its FAQ link and what the check looks at, and the environment snapshot (platform, Node, npm, `PATH` in search order). It is capped in size, so a noisy machine cannot flood the request.
+- **Never sent:** log files, chat transcripts, your home directory, or any token. Everything outbound goes through the same redactor the reports use, and your home path is collapsed to `~` on the way out.
+- **Your choice:** `fbdoc ask --no-checks "..."` sends the question with no machine context at all, and `--only` narrows what the assistant is told.
+
+`--offline` and the assistant are mutually exclusive — it says so and exits `1` rather than pretending to answer. Under a pipe or in CI nothing ever prompts: with no key configured, `fbdoc ask` prints how to set one and exits `1`.
+
 ## Command reference
 
 | Command | What it does |
 | --- | --- |
-| `fbdoc` | Interactive main menu: run diagnostics, search the FAQ, use the wizard, export a report. |
+| `fbdoc` | Interactive main menu: run diagnostics, search the FAQ, use the wizard, ask the AI assistant, export a report. |
 | `fbdoc check` | Runs every diagnostic and prints pass/warn/fail per check. Supports `--json` and `--only`. |
 | `fbdoc faq <query>` | Fuzzy-searches the bundled FAQ and prints the best-matching section. |
 | `fbdoc faq --list` | Lists every FAQ section. |
 | `fbdoc wizard` | Guided Q&A that narrows the problem down and surfaces the matching FAQ section(s). |
-| `fbdoc report` | Generates a redacted Markdown support report. `--output <file>` writes it to disk. |
+| `fbdoc ask [question]` | Runs the diagnostics, then asks the AI assistant (Groq, `openai/gpt-oss-20b`) about them. With a question it answers once and exits; with no question on a terminal it opens a chat. `--no-checks` skips the diagnostics, `--only` narrows them. |
+| `fbdoc export` | Runs every check and writes a detailed, redacted `.md` report to your Downloads folder for Freebuff helpers. `--dir <folder>` writes elsewhere, `--stdout` prints it. |
+| `fbdoc report` | Generates a short, redacted Markdown report ready to paste into Discord. `--output <file>` writes it to disk. |
 | `fbdoc checks` | Lists every check, grouped by what it covers (`--json` for machines). |
 | `fbdoc explain [id]` | Explains one check: what it reads, why it matters, the FAQ section behind it, and how to run it alone. With no id, lists them all. |
 | `fbdoc env` | Prints your setup — runtime, `PATH` in search order, and the variables that change behaviour — with secrets redacted. |
@@ -133,11 +239,14 @@ These work on the top level and on any subcommand, in either position (`fbdoc --
 | `--strict` | Treat warnings as failures, so CI can gate on them. |
 | `--no-color` | Disable ANSI colour. `NO_COLOR` and piped output do this automatically. |
 | `--json` | (`check`, `faq`, `checks`, `explain`, `env`, `diff`) Emit machine-readable JSON on stdout. |
-| `--only <ids>` | (`check`, `report`) Comma-separated check ids, e.g. `--only dns,network`. |
+| `--only <ids>` | (`check`, `report`, `export`, `ask`) Comma-separated check ids, e.g. `--only dns,network`. |
 | `--all` | (`check`) Print every result in full, including the ones that passed. |
 | `--quiet` | (`check`) Print only the checks that need attention. |
 | `--limit <n>` | (`faq`) Maximum number of matches to show. |
 | `--output <file>` | (`report`) Write the report to a file instead of stdout. |
+| `--dir <folder>` | (`export`) Write the report into this folder instead of Downloads. |
+| `--stdout` | (`export`) Print the detailed report instead of saving it. |
+| `--no-checks` | (`ask`) Skip the diagnostics and let the assistant answer from your question alone. |
 
 ## What it checks
 
@@ -174,7 +283,7 @@ These work on the top level and on any subcommand, in either position (`fbdoc --
 | `storage` | Disk space and permissions | Free space on the volume holding your Freebuff state, plus write access to it and to npm's global directory. |
 | `resource-limits` | Memory, file descriptors and processes | Effective `ulimit -n`, free RAM, and the number of live Node processes — and it ties a recorded out-of-memory crash back to the memory available right now. |
 
-Checks run concurrently but are always reported in the order above. Each result carries a one-line explanation, an optional `fix` command, a link to the FAQ section that covers it, and the `fbdoc explain <id>` command that documents it. `fbdoc checks` prints the ids for use with `--only`.
+Checks run concurrently. Within each group they are reported in the order above: the group that needs a human comes first, then the healthy ones — collapsed to one line each, or in full with `--all`. Each result carries a one-line explanation, an optional `fix` command, a link to the FAQ section that covers it, and the `fbdoc explain <id>` command that documents it. `fbdoc checks` prints the ids for use with `--only`.
 
 A few of them are deliberately conservative. `clock-skew` still audits your TLS environment under `--offline`, because a stale `NODE_EXTRA_CA_CERTS` is exactly what breaks HTTPS, and `binary-integrity` inspects the install without ever executing the CLI, so running the doctor can never trigger an engine download or a self-update as a side effect. `split-state` treats the CLI and desktop app keeping separate histories as normal, and only complains about sessions stranded in the legacy directory. `error-triage` reads log tails but never chat transcripts, so code you pasted into a conversation cannot raise a false alarm.
 
@@ -189,16 +298,26 @@ The output is built to be read top-down: everything that needs attention is prin
 
 One confident match is printed straight away; genuinely ambiguous queries (like `project`) show a short numbered list to pick from instead of guessing. The package always loads `faq.md` relative to its own installed location, never your working directory.
 
-## Support report
+## Reports
 
-`fbdoc report` collects the diagnostics, your OS/platform, app versions and the last lines of the engine log, then **redacts** anything that looks like a token, email, API key, credential or private key, and replaces your home directory with `~`. Output is clean Markdown for pasting into a Discord `#help` thread:
+Both report commands collect the diagnostics, your OS/platform, app versions and the last lines of the engine log, then **redact** anything that looks like a token, email, API key, credential or private key, and replace your home directory with `~`. The footer states exactly what was scrubbed, so you can see it did something.
+
+`fbdoc report` prints clean Markdown for pasting into a Discord `#help` thread. It aims to stay under Discord's 2000-character limit, and tells you when it cannot — the log tail is usually what pushes it over, so write the file instead and attach it:
 
 ```console
 $ fbdoc report > report.md
 $ fbdoc report --output report.md
 ```
 
-The report's footer states exactly what was scrubbed, so you can see it did something.
+`fbdoc export` writes the long-form version to a `.md` file in your Downloads folder (honouring an XDG download directory if you have one) and names it with the date and time:
+
+```console
+$ fbdoc export                       # Downloads/freebuff-doctor-report-<date>-<time>.md
+$ fbdoc export --dir ./reports       # somewhere else
+$ fbdoc export --stdout              # print it instead of saving a file
+```
+
+It is deliberately far more detailed than the Discord one, because it exists to save a round trip: the environment, `PATH` in search order, every state directory, the catalogue's "what this check looks at" text, each problem's raw `data` payload, a 60-line engine log tail, and the whole result set as JSON a helper can diff. Chat transcripts are never included.
 
 ## Exit codes and CI
 
@@ -210,6 +329,8 @@ $ fbdoc check --json
 - `1` — at least one check failed, or the request could not be completed (bad flag, unknown command, no FAQ match).
 - Add `--strict` to make warnings exit `1` as well.
 - `130` — you cancelled an interactive prompt.
+
+`fbdoc report` and `fbdoc export` always exit `0` when they produce a report, even if checks failed: the report is the product, not the verdict. Only being unable to write the file exits `1`.
 
 `--json` writes nothing else to stdout, so it pipes cleanly:
 
@@ -226,7 +347,7 @@ $ fbdoc check --json --offline | jq '.summary'
 ## Requirements
 
 - **Node.js 22.13 or newer** (or 23.5+). That floor comes from the runtime dependencies — `commander` needs ≥22.12 and `@inquirer/prompts` needs ≥22.13 or ≥23.5. The CLI is published as ESM (`type: module`).
-- No configuration, no API keys, and no network access is required for `fbdoc faq` or `fbdoc report --offline`.
+- No configuration, no API keys and no network access are required for `fbdoc faq`, `fbdoc report --offline` or `fbdoc export --offline`. The AI assistant is the one optional exception: it needs a free Groq key and a connection, as described in [AI assistance](#ai-assistance-optional-groq).
 
 Colour is disabled automatically when output is piped, in CI, or when `NO_COLOR` is set. Spinners only appear after 300 ms and only on an interactive terminal, so a fast, piped run stays quiet.
 
@@ -240,6 +361,21 @@ $ npm run typecheck
 $ npm run dev -- check   # run the TypeScript source directly with tsx
 ```
 
-The tests cover the FAQ parser and ranking, the pure decision logic behind every check (DNS classification, crash-log classification, Node-manager detection, architecture matching, config parsing, lock parsing, clock skew, environment audit, git config, resource limits, growth thresholds, proxy parsing, TLS chain walking, hosts parsing, credential inspection, log triage, cache artefacts, watcher limits, temp health, path lengths, listening sockets, report comparison, redaction, semver), and the built CLI itself: exit codes, `--json` shape, `NO_COLOR`, `--only`, `explain`, `env`, `diff` and report redaction. One test asserts that every registered check is documented and that every FAQ link a check can emit points at a section that exists.
+The tests cover the FAQ parser and ranking, the pure decision logic behind every check (DNS classification, crash-log classification, Node-manager detection, architecture matching, config parsing, lock parsing, clock skew, environment audit, git config, resource limits, growth thresholds, proxy parsing, TLS chain walking, hosts parsing, credential inspection, log triage, cache artefacts, watcher limits, temp health, path lengths, listening sockets, report comparison, redaction, semver), and the built CLI itself: exit codes, `--json` shape, `NO_COLOR`, `--only`, `explain`, `env`, `diff` and report redaction. Both report builders are tested for their structure, and the export path is tested for its filename stamp, XDG/Downloads resolution and fallbacks. One test asserts that every registered check is documented and that every FAQ link a check can emit points at a section that exists; two others assert that no report, and no JSON payload embedded in one, can leak your home directory in any slash or backslash spelling. The AI layer has its own suite: key-lookup precedence, the saved-key round trip and its permissions, outbound request shaping (including that the key travels in a header and never in the body), SSE fragment reassembly across chunk boundaries, HTTP status mapping, and the guarantee that no prompt, question or key can escape the redactor.
 
 Layout:
+
+```
+src/
+  ai/               the Groq client, API-key storage, and the prompt built from check results
+  cli.ts            commander tree: check, ask, faq, wizard, report, export, explain, env, diff, checks, menu
+  checks/           one module per check, plus catalog.ts (categories, summaries, "why" text)
+  commands/         one module per command, including the interactive menu and wizard
+  faq/              faq.md loader, keyword aliases and the fuzzy search index
+  report/           support.ts (Discord-sized) and helper.ts (the detailed export)
+  ui/               terminal output, prompts, spinner, colour and width helpers
+  util/             redaction, platform paths, environment snapshot, Downloads resolution, filesystem scanning
+faq.md              the bundled FAQ, parsed at runtime
+scripts/            postbuild step (shebang + executable bit on dist/cli.js)
+test/               one suite per area, plus end-to-end tests against the built CLI
+```
