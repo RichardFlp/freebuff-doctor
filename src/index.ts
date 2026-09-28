@@ -48,6 +48,8 @@ export {
   buildUserMessage,
 } from './ai/prompt.js'
 export type { AssistantContext } from './ai/prompt.js'
+export { AnswerRenderer, renderAnswer } from './ai/render.js'
+export type { AnswerRendererOptions } from './ai/render.js'
 export { redact, redactLine } from './util/redact.js'
 export {
   downloadsCandidates,

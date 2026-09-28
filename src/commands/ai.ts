@@ -15,6 +15,7 @@ import {
   type ChatMessage,
 } from '../ai/client.js'
 import { buildSystemPrompt, buildUserMessage } from '../ai/prompt.js'
+import { AnswerRenderer } from '../ai/render.js'
 import { runChecks } from '../checks/index.js'
 import {
   createContext,
@@ -243,6 +244,9 @@ function reportAiFailure(error: unknown, verbose: boolean): void {
  * into a jumble of half-overwritten lines. This is the one place in the CLI
  * that writes *during* a wait, so it may not move the cursor at all: one status
  * line, then the answer, on ordinary newline-separated lines.
+ *
+ * The markdown itself is styled as it arrives, line by line, so the reader gets
+ * headings, emphasis and code blocks rather than raw `**` and backticks.
  */
 async function answerOnce(
   messages: ChatMessage[],
@@ -259,20 +263,24 @@ async function answerOnce(
     write(c().bold('Freebuff assistant'))
   }
 
+  const renderer = new AnswerRenderer()
+  const print = (lines: string[]): void => {
+    if (lines.length === 0) return
+    open()
+    for (const line of lines) write(line)
+  }
+
   const answer = await chat(
     {
       apiKey: source.key,
       messages,
       timeoutMs: aiTimeoutMs(options),
     },
-    (delta) => {
-      open()
-      process.stdout.write(delta)
-    },
+    (delta) => print(renderer.push(delta)),
   )
 
+  print(renderer.flush())
   open()
-  process.stdout.write('\n')
   if (!answer.trim()) {
     write(c().yellow('Groq sent an empty answer — try asking in another way.'))
   }

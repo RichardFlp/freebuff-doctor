@@ -31,12 +31,16 @@ import {
   buildSystemPrompt,
   buildUserMessage,
 } from '../src/ai/prompt.js'
+import { createColors } from 'picocolors'
+
+import { AnswerRenderer, renderAnswer } from '../src/ai/render.js'
 import { MENU_CHOICES } from '../src/commands/menu.js'
 import type { CheckResult } from '../src/checks/types.js'
 import { summarize } from '../src/checks/types.js'
 import { collectSnapshot } from '../src/util/environment.js'
 import { resolvePlatformPaths } from '../src/util/platform.js'
 import { redact } from '../src/util/redact.js'
+import { stringWidth } from '../src/util/width.js'
 
 /**
  * A deliberately fake key. Groq keys are `gsk_` plus a long alphanumeric tail,
@@ -227,6 +231,187 @@ describe('answerFromBody', () => {
   it('returns an empty string rather than throwing on nonsense', () => {
     expect(answerFromBody('<html>502</html>')).toBe('')
     expect(answerFromBody('{"choices":[]}')).toBe('')
+  })
+})
+
+/** The shape of a real answer: prose, a fenced block and a numbered list. */
+const SAMPLE_ANSWER = [
+  'The diagnostics found five warnings.',
+  'Below are the likely causes and the commands to paste into **cmd.exe**.',
+  '',
+  '```cmd',
+  ':: 1. Update the global CLI',
+  'npm i -g freebuff@latest',
+  '',
+  ':: 2. Remove superseded engine copies',
+  'del "%USERPROFILE%\\.config\\manicode\\freebuff.exe.old.*"',
+  '```',
+  '',
+  '## What each step does',
+  '',
+  '1. **global-install** — brings the CLI up to date.',
+  '2. **cache-integrity** — deletes old engine binaries.',
+  '',
+  'Then re-run `fbdoc check` to confirm.',
+].join('\n')
+
+const PLAIN = { color: false, width: 80 } as const
+
+function styled(markdown: string, width = 80): string {
+  return renderAnswer(markdown, {
+    color: true,
+    colors: createColors(true),
+    width,
+  }).join('\n')
+}
+
+describe('AnswerRenderer', () => {
+  it('renders emphasis and inline code instead of printing the markers', () => {
+    const rendered = styled(
+      'Paste this into **cmd.exe** and run `fbdoc check`.',
+    )
+    expect(rendered).not.toContain('**')
+    expect(rendered).not.toContain('`')
+    expect(rendered).toContain('\u001b[1m') // bold
+    expect(rendered).toContain('\u001b[36m') // cyan inline code
+  })
+
+  it('styles a real answer end to end', () => {
+    const lines = renderAnswer(SAMPLE_ANSWER, {
+      color: true,
+      colors: createColors(true),
+      width: 80,
+    })
+    const text = lines.join('\n')
+
+    // No raw markdown survives in the styled output.
+    expect(text).not.toContain('**')
+    expect(text).not.toContain('```')
+    expect(text).not.toContain('##')
+
+    // Headings become bold text with a rule underneath.
+    expect(text).toContain('\u001b[1mWhat each step does\u001b[22m')
+    expect(text).toContain('─')
+
+    // Code is indented and kept verbatim, comments and all.
+    expect(lines).toContain('  :: 1. Update the global CLI')
+    expect(lines).toContain('  npm i -g freebuff@latest')
+
+    // Blank lines only ever separate blocks.
+    expect(lines[0]).not.toBe('')
+    expect(lines.at(-1)).not.toBe('')
+    expect(text).not.toMatch(/\n\n\n/)
+  })
+
+  it('strips every marker when colour is unavailable', () => {
+    const lines = renderAnswer(SAMPLE_ANSWER, PLAIN)
+    const text = lines.join('\n')
+    expect(text).not.toContain('\u001b')
+    expect(text).not.toContain('**')
+    expect(text).not.toContain('```')
+    expect(text).not.toContain('##')
+    expect(lines).toContain('What each step does')
+    expect(lines).toContain('  :: 1. Update the global CLI')
+    expect(lines.at(-1)).toBe('Then re-run fbdoc check to confirm.')
+  })
+
+  it('turns list markers into bullets and keeps the text aligned', () => {
+    const lines = renderAnswer('- first item\n- **second** item', {
+      color: true,
+      colors: createColors(true),
+      width: 80,
+    })
+    expect(lines).toEqual([
+      '\u001b[2m•\u001b[22m first item',
+      '\u001b[2m•\u001b[22m \u001b[1msecond\u001b[22m item',
+    ])
+  })
+
+  it('hangs numbered and bulleted list text under its marker', () => {
+    const numbered = renderAnswer(
+      `1. **Update the CLI** — ${'pulls the latest release so you are not '.repeat(3)}running an outdated version.`,
+      { ...PLAIN, width: 60 },
+    )
+    expect(numbered[0]?.startsWith('1. Update the CLI')).toBe(true)
+    for (const line of numbered.slice(1))
+      expect(line.startsWith('   ')).toBe(true)
+
+    const bulleted = renderAnswer(
+      `- **First** ${'and some more words to force a wrap '.repeat(3)}here`,
+      { ...PLAIN, width: 60 },
+    )
+    // In plain mode the original marker is kept rather than redrawn.
+    expect(bulleted[0]?.startsWith('- First')).toBe(true)
+    for (const line of bulleted.slice(1))
+      expect(line.startsWith('  ')).toBe(true)
+  })
+
+  it('trims the double spaces markdown uses for a hard break', () => {
+    expect(renderAnswer('ends here.  \nnext line', PLAIN)).toEqual([
+      'ends here.',
+      'next line',
+    ])
+  })
+
+  it('wraps long prose to the width it was given', () => {
+    const long = `word ${'filler '.repeat(40)}`
+    const lines = renderAnswer(long.trim(), { ...PLAIN, width: 40 })
+    expect(lines.length).toBeGreaterThan(1)
+    for (const line of lines) expect(stringWidth(line)).toBeLessThanOrEqual(40)
+  })
+
+  it('gives identical output however the stream is chunked', () => {
+    // The whole point: a fragment can split anywhere, including inside a fence
+    // marker, an emphasis run, or a multi-byte character.
+    const expected = renderAnswer(SAMPLE_ANSWER, PLAIN)
+    for (const size of [1, 2, 3, 5, 7, 11, 40, 500]) {
+      const renderer = new AnswerRenderer(PLAIN)
+      const lines: string[] = []
+      const chunks = [...SAMPLE_ANSWER]
+      let index = 0
+      while (index < chunks.length) {
+        const fragment = chunks.slice(index, index + size).join('')
+        lines.push(...renderer.push(fragment))
+        index += size
+      }
+      lines.push(...renderer.flush())
+      expect(lines, `chunk size ${size}`).toEqual(expected)
+    }
+  })
+
+  it('renders a final line that arrived without a newline', () => {
+    const renderer = new AnswerRenderer(PLAIN)
+    expect(renderer.push('no trailing newline')).toEqual([])
+    expect(renderer.flush()).toEqual(['no trailing newline'])
+  })
+
+  it('holds back blank lines so the answer never starts or ends with one', () => {
+    expect(renderAnswer('\n\nHello\n\n\n', PLAIN)).toEqual(['Hello'])
+    expect(renderAnswer('Hello\n\n\nWorld\n', PLAIN)).toEqual([
+      'Hello',
+      '',
+      'World',
+    ])
+  })
+
+  it('keeps code lines intact even when they are longer than the terminal', () => {
+    const command = `del "${'x'.repeat(120)}"`
+    const lines = renderAnswer(`\`\`\`cmd\n${command}\n\`\`\``, PLAIN)
+    expect(lines).toEqual([`  ${command}`])
+  })
+
+  it('leaves no trailing whitespace on blank lines inside code', () => {
+    const lines = renderAnswer('\`\`\`cmd\na\n\nb\n\`\`\`', PLAIN)
+    expect(lines).toEqual(['  a', '', '  b'])
+    expect(lines.some((line) => line !== line.trimEnd())).toBe(false)
+  })
+
+  it('never prints a fence marker, even an unterminated one', () => {
+    const lines = renderAnswer('\`\`\`cmd\nstill going', PLAIN)
+    expect(lines).toEqual(['  still going'])
+    const renderer = new AnswerRenderer(PLAIN)
+    renderer.push('\`\`\`cmd\n')
+    expect(renderer.inFence).toBe(true)
   })
 })
 
