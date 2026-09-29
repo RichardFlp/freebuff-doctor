@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { aiTimeoutMs } from '../src/commands/ai.js'
+import { aiTimeoutMs, groundingNotice } from '../src/commands/ai.js'
 import { DEFAULT_AI_TIMEOUT_MS } from '../src/ai/client.js'
 import {
   AiError,
@@ -44,6 +44,7 @@ import {
 } from '../src/ai/knowledge.js'
 import { estimateTokens } from '../src/util/tokens.js'
 import {
+  claimsIgnorance,
   commandClaims,
   quotedSections,
   unsupportedClaims,
@@ -1042,6 +1043,36 @@ describe('grounding check', () => {
     ).toEqual(['git config --global core.longpaths true'])
   })
 
+  it('notices an answer that asks instead of telling, or pleads ignorance', () => {
+    // Both of these came out of real runs with the answer quoted in the turn.
+    expect(
+      claimsIgnorance(
+        "I'm not sure which URL you're looking for. Do you want the link to the project on the Freebuff website, or the local path?",
+      ),
+    ).toBe(true)
+    expect(
+      claimsIgnorance(
+        "I don't have any information about refunds for unused Freebuff credits.",
+      ),
+    ).toBe(true)
+    expect(claimsIgnorance('The FAQ does not cover that question.')).toBe(true)
+  })
+
+  it('does not mistake a real answer for ignorance', () => {
+    const answer = [
+      'To get your project URL, follow the steps in the FAQ "Getting Your Project URL":',
+      '',
+      '1. Open your Freebuff web or cloud project.',
+      '2. Copy the address bar URL.',
+    ].join('\n')
+    expect(claimsIgnorance(answer)).toBe(false)
+    expect(
+      claimsIgnorance(
+        'Run `npm i -g freebuff@latest` and then re-run fbdoc check.',
+      ),
+    ).toBe(false)
+  })
+
   it('recovers the quoted sections and the question from the turn', () => {
     const sections = quotedSections(material)
     expect(sections.map((section) => section.title)).toEqual([
@@ -1050,6 +1081,53 @@ describe('grounding check', () => {
     expect(sections[0]?.body).toContain('no "share" button')
     // The question is not swallowed into the last section.
     expect(sections[0]?.body).not.toContain('how do I get my project URL?')
+  })
+})
+
+describe('groundingNotice', () => {
+  const question = 'how do I get my project URL?'
+  const knowledge = buildTurnKnowledge(question)
+  const messages: ChatMessage[] = [
+    {
+      role: 'user',
+      content: `${knowledge ?? ''}\n\nThen answer this question:\n\n${question}`,
+    },
+  ]
+
+  it('prints the FAQ text when the answer asks instead of answering', () => {
+    const notice = groundingNotice(
+      "I'm not sure which URL you're looking for — the website link, or a local path?",
+      messages,
+    )
+    const text = notice.join('\n')
+    expect(text).toMatch(/does answer this/)
+    // The section that was quoted, with its body — the actual FAQ wording.
+    expect(text).toContain('Getting Your Project URL')
+    expect(text).toContain('address bar URL')
+    expect(text).toContain('fbdoc faq "Getting Your Project URL"')
+  })
+
+  it('prints the FAQ text when the answer invents a command', () => {
+    const notice = groundingNotice(
+      'Run `fb project list` and take the id.',
+      messages,
+    )
+    const text = notice.join('\n')
+    expect(text).toContain('Not in the FAQ')
+    expect(text).toContain('fb project list')
+    expect(text).toContain('address bar URL')
+  })
+
+  it('says nothing when the answer came from the FAQ', () => {
+    const answer = [
+      'The FAQ answers this directly:',
+      '',
+      '1. Open your Freebuff web/cloud project.',
+      '2. Copy the address bar URL.',
+      '',
+      'Read it with `fbdoc faq "Getting Your Project URL"`.',
+    ].join('\n')
+    expect(groundingNotice(answer, messages)).toEqual([])
   })
 })
 

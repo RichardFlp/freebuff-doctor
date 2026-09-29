@@ -9,7 +9,11 @@ import {
   storeApiKey,
   type ApiKeySource,
 } from '../ai/config.js'
-import { quotedSections, unsupportedClaims } from '../ai/grounding.js'
+import {
+  claimsIgnorance,
+  quotedSections,
+  unsupportedClaims,
+} from '../ai/grounding.js'
 import {
   AiError,
   DEFAULT_AI_TIMEOUT_MS,
@@ -245,53 +249,68 @@ function reportAiFailure(error: unknown, verbose: boolean): void {
 /**
  * Reads the answer back against everything the model was handed.
  *
- * Instructions alone do not stop a small model from inventing a command it
- * half-remembers — the same question produced the FAQ's wording on one run and
- * `fb project list` on the next. So when an answer presents something to run
- * that appears nowhere in its context, the FAQ text for that question is
- * printed underneath it: the reader gets the authoritative wording instead of
- * instructions they cannot trust.
+ * Instructions alone do not stop a small model from drifting — the same
+ * question, at temperature zero, produced the FAQ's wording on one run, an
+ * invented `fb project list` on another, and a request for clarification on a
+ * third while the answer sat quoted in its own prompt. So an answer is checked
+ * back for the two ways it goes wrong: presenting a command that appears
+ * nowhere in its context, and saying it does not know when the FAQ text in that
+ * turn says otherwise. Either way the FAQ's wording is printed underneath — the
+ * reader gets the authoritative answer even when the model did not use it.
  */
-function reportUngrounded(answer: string, messages: ChatMessage[]): void {
+export function groundingNotice(
+  answer: string,
+  messages: ChatMessage[],
+): string[] {
   const material = messages.map((message) => message.content).join('\n')
   const invented = unsupportedClaims(answer, material)
-  if (invented.length === 0) return
-
-  const quote = (value: string): string =>
-    `“${value.replace(/\s+/g, ' ').trim().slice(0, 60)}”`
-  write('')
-  write(
-    c().yellow(
-      `${GLYPH.failure} Not in the FAQ: ${invented.map(quote).join(', ')} — the answer above may have guessed.`,
-    ),
-  )
-
   const sections = quotedSections(material).slice(0, 2)
+  const shrugged = sections.length > 0 && claimsIgnorance(answer)
+  if (invented.length === 0 && !shrugged) return []
+
+  const out: string[] = ['']
+  if (invented.length > 0) {
+    const quote = (value: string): string =>
+      `“${value.replace(/\s+/g, ' ').trim().slice(0, 60)}”`
+    out.push(
+      c().yellow(
+        `${GLYPH.failure} Not in the FAQ: ${invented.map(quote).join(', ')} — the answer above may have guessed.`,
+      ),
+    )
+  } else {
+    out.push(
+      c().yellow(
+        `${GLYPH.failure} The FAQ above does answer this, so here it is rather than a question back.`,
+      ),
+    )
+  }
+
   if (sections.length === 0) {
-    write(
+    out.push(
       c().dim(
         '  Run fbdoc faq with a few words from your question to read what it actually says.',
       ),
     )
-    return
+    return out
   }
 
-  write(c().dim("  Here is the FAQ's own wording — trust this instead:"))
+  out.push(c().dim("  Here is the FAQ's own wording — trust this instead:"))
   for (const section of sections) {
-    write('')
-    write(c().bold(section.title))
+    out.push('')
+    out.push(c().bold(section.title))
     for (const line of renderMarkdown(section.body, {
       width: terminalWidth() - 2,
       indent: '  ',
     })) {
-      write(line)
+      out.push(line)
     }
-    write(
+    out.push(
       c().dim(
         `  Read it in full with ${c().cyan('fbdoc faq')} "${section.title}"`,
       ),
     )
   }
+  return out
 }
 
 /**
@@ -344,7 +363,7 @@ async function answerOnce(
   if (!answer.trim()) {
     write(c().yellow('Groq sent an empty answer — try asking in another way.'))
   } else {
-    reportUngrounded(answer, messages)
+    for (const line of groundingNotice(answer, messages)) write(line)
   }
   return answer
 }

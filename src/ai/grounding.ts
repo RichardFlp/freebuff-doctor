@@ -150,6 +150,28 @@ export function quotedSections(
 }
 
 /**
+ * Ways an answer can say it does not know, or hand the question straight back.
+ * Being read back matters because the FAQ text for the question was in the turn
+ * when it said this: the reader is about to be sent to Discord for something
+ * `fbdoc faq` already answers.
+ */
+const IGNORANCE = [
+  /\b(?:i )?(?:do not|don't) have (?:any )?(?:information|details|info)/i,
+  /\b(?:i )?(?:am|'m) not sure\b/i,
+  /\b(?:i )?(?:cannot|can't|can not) (?:help|answer|find|provide)/i,
+  /\bno (?:specific |detailed )?information\b/i,
+  /\bfaq does not (?:cover|contain|mention|have)/i,
+  /\bdoes not (?:cover|mention|address) (?:that|this|your question)\b/i,
+  /\bwhich\b[^.?!\n]{0,40}\bdo you mean\b/i,
+  /\bare you (?:asking|looking for)\b/i,
+]
+
+/** True when the answer asks rather than telling, or says it does not know. */
+export function claimsIgnorance(answer: string): boolean {
+  return IGNORANCE.some((pattern) => pattern.test(answer))
+}
+
+/**
  * The claims in `answer` that do not appear in `material` — the whole context
  * the model was given, so a command quoted from the FAQ, from a finding or from
  * its own instructions counts as supported.
