@@ -14,6 +14,7 @@ import {
   quotedSections,
   unsupportedClaims,
 } from '../ai/grounding.js'
+import { faqAnswersDirectly } from '../ai/knowledge.js'
 import {
   AiError,
   DEFAULT_AI_TIMEOUT_MS,
@@ -261,12 +262,14 @@ function reportAiFailure(error: unknown, verbose: boolean): void {
 export function groundingNotice(
   answer: string,
   messages: ChatMessage[],
+  includeFaq = false,
 ): string[] {
   const material = messages.map((message) => message.content).join('\n')
   const invented = unsupportedClaims(answer, material)
   const sections = quotedSections(material).slice(0, 2)
   const shrugged = sections.length > 0 && claimsIgnorance(answer)
-  if (invented.length === 0 && !shrugged) return []
+  const questioned = invented.length > 0 || shrugged
+  if (!questioned && (!includeFaq || sections.length === 0)) return []
 
   const out: string[] = ['']
   if (invented.length > 0) {
@@ -277,10 +280,16 @@ export function groundingNotice(
         `${GLYPH.failure} Not in the FAQ: ${invented.map(quote).join(', ')} — the answer above may have guessed.`,
       ),
     )
-  } else {
+  } else if (shrugged) {
     out.push(
       c().yellow(
-        `${GLYPH.failure} The FAQ above does answer this, so here it is rather than a question back.`,
+        `${GLYPH.failure} The FAQ does answer this, so here it is rather than a question back.`,
+      ),
+    )
+  } else {
+    out.push(
+      c().dim(
+        'The bundled FAQ answers this as well — verbatim, so it cannot drift:',
       ),
     )
   }
@@ -294,8 +303,12 @@ export function groundingNotice(
     return out
   }
 
-  out.push(c().dim("  Here is the FAQ's own wording — trust this instead:"))
-  for (const section of sections) {
+  if (questioned) {
+    out.push(c().dim("  Here is the FAQ's own wording — trust this instead:"))
+  }
+  // A clean answer only needs the section the question was about; when the
+  // answer went wrong, anything quoted for it may be worth showing.
+  for (const section of questioned ? sections : sections.slice(0, 1)) {
     out.push('')
     out.push(c().bold(section.title))
     for (const line of renderMarkdown(section.body, {
@@ -330,6 +343,8 @@ async function answerOnce(
   messages: ChatMessage[],
   options: AiCommandOptions,
   source: ApiKeySource,
+  /** True when the bundled FAQ answers this question outright. */
+  faqAnswered = false,
 ): Promise<string> {
   writeErr(c().dim('Asking Groq…'))
 
@@ -363,7 +378,8 @@ async function answerOnce(
   if (!answer.trim()) {
     write(c().yellow('Groq sent an empty answer — try asking in another way.'))
   } else {
-    for (const line of groundingNotice(answer, messages)) write(line)
+    for (const line of groundingNotice(answer, messages, faqAnswered))
+      write(line)
   }
   return answer
 }
@@ -434,7 +450,12 @@ async function openChat(
       content: turnContent(question, results, home),
     })
     try {
-      const answer = await answerOnce(messages, options, source)
+      const answer = await answerOnce(
+        messages,
+        options,
+        source,
+        faqAnswersDirectly(question),
+      )
       messages.push({ role: 'assistant', content: answer })
     } catch (error) {
       messages.length = mark
@@ -521,7 +542,7 @@ export async function runAskCommand(
   ]
 
   try {
-    await answerOnce(messages, options, source)
+    await answerOnce(messages, options, source, faqAnswersDirectly(asked))
   } catch (error) {
     reportAiFailure(error, options.verbose)
     return FAILED

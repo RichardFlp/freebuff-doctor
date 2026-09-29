@@ -182,11 +182,21 @@ export function relevantSections(
       chose(exact)
     }
   }
-  for (const match of searchIndex(bundledIndex(), query, {
-    limit: limit + 2,
-    floor: 0.25,
-  })) {
+  // Beyond the best section, only peers that are nearly as strong are quoted: a
+  // search always returns neighbours that share a word with the title
+  // ("Getting Help — Who to Contact" for a question about a project URL), and
+  // those are the noise a small model latches onto.
+  const ranked = searchIndex(bundledIndex(), query, {
+    limit: limit + 4,
+    floor: 0.3,
+  })
+  const strongest = ranked[0]?.confidence ?? 0
+  const peerBar = Math.max(DIRECT_MATCH, strongest - 0.2)
+  for (const [index, match] of ranked.entries()) {
     if (chosen.length >= limit) break
+    // The best match is always quoted, however weak it is: it is the FAQ's own
+    // best answer to the question. Only what follows it has to clear the bar.
+    if (index > 0 && match.confidence < peerBar) break
     chose(match.section)
   }
   return chosen
@@ -197,6 +207,29 @@ export function relevantSections(
     chosen.push(section)
   }
 }
+
+/**
+ * True when the bundled FAQ has a direct answer for this question — a section
+ * whose title or keywords the question actually lands on, not a fuzzy guess.
+ *
+ * It is the signal for printing that section next to the answer: a small model
+ * cannot be relied on to relay facts it was handed (the same question, twice at
+ * temperature zero, produced the FAQ's steps once and an invented "Share"
+ * button the next time), so when the FAQ answers, the FAQ is shown.
+ */
+export function faqAnswersDirectly(question: string): boolean {
+  const [best] = searchIndex(bundledIndex(), question, { limit: 3, floor: 0.3 })
+  return Boolean(best && best.tier >= 1 && best.confidence >= DIRECT_MATCH)
+}
+
+/**
+ * Confidence at which a section counts as answering the question outright.
+ * Deliberately low: at 0.5 the refunds question scores 0.57 and "my desktop app
+ * crashes on start" 0.52, both of which the FAQ does answer, while questions
+ * the FAQ has nothing on — a keyboard shortcut, a warning about PATH entries —
+ * score no match at all.
+ */
+export const DIRECT_MATCH = 0.5
 
 /** The standing knowledge block: the primer, the FAQ index and the catalogue. */
 export function buildKnowledge(results: CheckResult[] = []): string {

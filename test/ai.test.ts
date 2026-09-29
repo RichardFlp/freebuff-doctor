@@ -1118,7 +1118,7 @@ describe('groundingNotice', () => {
     expect(text).toContain('address bar URL')
   })
 
-  it('says nothing when the answer came from the FAQ', () => {
+  it('says nothing when the answer came from the FAQ and nothing asked for it', () => {
     const answer = [
       'The FAQ answers this directly:',
       '',
@@ -1128,6 +1128,44 @@ describe('groundingNotice', () => {
       'Read it with `fbdoc faq "Getting Your Project URL"`.',
     ].join('\n')
     expect(groundingNotice(answer, messages)).toEqual([])
+  })
+
+  it('shows the FAQ itself when the FAQ answers the question outright', () => {
+    // The answer may be fine — but a small model cannot be trusted to relay the
+    // facts it was handed, so the section is shown either way.
+    const notice = groundingNotice(
+      'Click the Share button in the top-right corner.',
+      messages,
+      true,
+    )
+    const text = notice.join('\n')
+    expect(text).toContain('cannot drift')
+    expect(text).toContain('Getting Your Project URL')
+    expect(text).toContain('address bar URL')
+    expect(text).toContain('no "share" button')
+    // Nothing is claimed to be wrong when it is not known to be.
+    expect(text).not.toContain('Not in the FAQ')
+    expect(text).not.toContain('may have guessed')
+  })
+
+  it('shows no FAQ block when no section was in the turn', () => {
+    const bare: ChatMessage[] = [
+      {
+        role: 'user',
+        content: 'Then answer this question:\n\nwhy is node old?',
+      },
+    ]
+    expect(groundingNotice('Upgrade Node.', bare, true)).toEqual([])
+    // Saying it does not know is fair when the FAQ really was not quoted: the
+    // guard only complains about ducking an answer it was handed.
+    expect(
+      groundingNotice("I don't have any information about that.", bare),
+    ).toEqual([])
+    // An invented command is worth naming even then, with a way to check.
+    const invented = groundingNotice('Run `fb project list`.', bare).join('\n')
+    expect(invented).toContain('Not in the FAQ')
+    expect(invented).toContain('fb project list')
+    expect(invented).toContain('Run fbdoc faq')
   })
 })
 
