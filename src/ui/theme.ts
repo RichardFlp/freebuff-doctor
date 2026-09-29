@@ -76,6 +76,15 @@ export function c(): Colors {
   return cachedColors
 }
 
+/**
+ * A palette that never emits escapes, for rendering a block as plain text even
+ * on a terminal that supports colour — the streaming answer does this for
+ * tables when the reader asked for no colour.
+ */
+export function plainColors(): Colors {
+  return createColors(false)
+}
+
 /** True when the process can prompt: interactive terminal, not a pipe or CI. */
 export function isInteractive(
   stream: { isTTY?: boolean } = process.stdout,

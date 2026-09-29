@@ -1,6 +1,12 @@
-import { c, colorEnabled, terminalWidth, type Colors } from '../ui/theme.js'
+import {
+  c,
+  colorEnabled,
+  plainColors,
+  terminalWidth,
+  type Colors,
+} from '../ui/theme.js'
 import { renderInline, stripInlineMarkdown } from '../util/markdown-inline.js'
-import { wrap } from '../util/markdown.js'
+import { renderMarkdown, wrap } from '../util/markdown.js'
 import { stringWidth } from '../util/width.js'
 
 export interface AnswerRendererOptions {
@@ -19,6 +25,10 @@ const RULE = /^\s*([-*_])\1{2,}\s*$/
 const HEADING = /^(#{1,6})\s+(.*)$/
 const BULLET = /^(\s*)[-*+]\s+(.*)$/
 const ORDERED = /^(\s*)(\d+)[.)]\s+(.*)$/
+// A table row opens with a pipe; the separator row underneath is what makes
+// the block a table rather than prose that happens to contain pipes.
+const TABLE_ROW = /^\s*\|/
+const TABLE_SEPARATOR = /^\s*\|[\s:|-]+\|\s*$/
 
 /**
  * Styles the assistant's markdown *while it streams*.
@@ -28,6 +38,11 @@ const ORDERED = /^(\s*)(\d+)[.)]\s+(.*)$/
  * belongs to is complete. This buffers the partial line, styles each finished
  * one the way the FAQ does, and remembers whether it is inside a fenced block so
  * code is passed through verbatim.
+ *
+ * A table is the one block that needs more than a line: its columns cannot be
+ * sized until the last row is in, so pipe rows are held back and handed to the
+ * FAQ's own table renderer when the block ends (or the stream does). A run of
+ * pipes with no separator row is not a table, and is printed as prose.
  *
  * With colour unavailable the markers are stripped rather than printed, so a
  * piped answer stays readable.
@@ -42,6 +57,7 @@ export class AnswerRenderer {
   #inFence = false
   #wroteContent = false
   #pendingBlank = false
+  #table: string[] = []
 
   constructor(options: AnswerRendererOptions = {}) {
     this.#color = options.color ?? colorEnabled()
@@ -67,10 +83,22 @@ export class AnswerRenderer {
   flush(): string[] {
     const rest = this.#buffer
     this.#buffer = ''
-    return this.#emit(rest.trim() === '' ? [] : this.#renderLine(rest))
+    if (rest.trim() === '') return this.#emit(this.#takeTable())
+    // The last line may itself be another row of an open table, so it is fed
+    // through first — and a table still open after that is rendered too: the
+    // block ended because the stream did, not because a blank line arrived.
+    const lines = this.#renderLine(rest)
+    return this.#emit([...lines, ...this.#takeTable()])
   }
 
   #renderLine(line: string): string[] {
+    // While a table is open, only more pipe rows extend it. Anything else ends
+    // the block — and a blank line ends it too, which is where the reader's
+    // hard-won spacing comes from.
+    if (this.#table.length > 0 && !TABLE_ROW.test(line)) {
+      return [...this.#takeTable(), ...this.#renderLine(line)]
+    }
+
     // A fence marker is structural: it is never printed, only tracked.
     if (FENCE.test(line)) {
       this.#inFence = !this.#inFence
@@ -83,6 +111,13 @@ export class AnswerRenderer {
     }
 
     if (line.trim() === '') return ['']
+
+    // Pipe rows are buffered whole: the renderer below sizes the columns from
+    // every row at once, so nothing can be printed until the block is done.
+    if (TABLE_ROW.test(line)) {
+      this.#table.push(line)
+      return []
+    }
 
     if (RULE.test(line)) {
       return this.#color ? [this.#dim('─'.repeat(this.#ruleWidth()))] : []
@@ -121,6 +156,25 @@ export class AnswerRenderer {
     }
 
     return this.#wrapProse(line)
+  }
+
+  /**
+   * Renders the buffered pipe rows and clears the buffer. A real table (one
+   * with the separator row markdown requires) goes through the FAQ's table
+   * renderer so the columns line up exactly as they do there; anything else is
+   * prose that happened to start with a pipe, and is printed as such.
+   */
+  #takeTable(): string[] {
+    const rows = this.#table
+    this.#table = []
+    if (rows.length < 2 || !TABLE_SEPARATOR.test(rows[1] ?? '')) {
+      return rows.flatMap((row) => this.#wrapProse(row))
+    }
+    return renderMarkdown(rows.join('\n'), {
+      colors: this.#color ? this.#colors : plainColors(),
+      width: this.#width,
+      indent: this.#indent,
+    })
   }
 
   /** Wraps list text so every continuation line is indented under the marker. */

@@ -255,6 +255,18 @@ const SAMPLE_ANSWER = [
   'Then re-run `fbdoc check` to confirm.',
 ].join('\n')
 
+/** A real answer that answers in a table — the shape that used to print raw pipes. */
+const TABLE_ANSWER = [
+  'The diagnostics found two warnings.',
+  '',
+  '| Finding | What it means | Fix |',
+  '| --- | --- | --- |',
+  '| global-install | Your global CLI is out of date. | npm i -g freebuff@latest |',
+  '| env-hygiene | A token sits in .npmrc. | Delete the authToken line. |',
+  '',
+  'Run `fbdoc check` again to confirm.',
+].join('\n')
+
 const PLAIN = { color: false, width: 80 } as const
 
 function styled(markdown: string, width = 80): string {
@@ -362,21 +374,85 @@ describe('AnswerRenderer', () => {
 
   it('gives identical output however the stream is chunked', () => {
     // The whole point: a fragment can split anywhere, including inside a fence
-    // marker, an emphasis run, or a multi-byte character.
-    const expected = renderAnswer(SAMPLE_ANSWER, PLAIN)
-    for (const size of [1, 2, 3, 5, 7, 11, 40, 500]) {
-      const renderer = new AnswerRenderer(PLAIN)
-      const lines: string[] = []
-      const chunks = [...SAMPLE_ANSWER]
-      let index = 0
-      while (index < chunks.length) {
-        const fragment = chunks.slice(index, index + size).join('')
-        lines.push(...renderer.push(fragment))
-        index += size
+    // marker, an emphasis run, a table row, or a multi-byte character.
+    for (const markdown of [SAMPLE_ANSWER, TABLE_ANSWER]) {
+      const expected = renderAnswer(markdown, PLAIN)
+      for (const size of [1, 2, 3, 5, 7, 11, 40, 500]) {
+        const renderer = new AnswerRenderer(PLAIN)
+        const lines: string[] = []
+        const chunks = [...markdown]
+        let index = 0
+        while (index < chunks.length) {
+          const fragment = chunks.slice(index, index + size).join('')
+          lines.push(...renderer.push(fragment))
+          index += size
+        }
+        lines.push(...renderer.flush())
+        expect(lines, `chunk size ${size}`).toEqual(expected)
       }
-      lines.push(...renderer.flush())
-      expect(lines, `chunk size ${size}`).toEqual(expected)
     }
+  })
+
+  it('renders a markdown table as aligned columns, never raw pipe rows', () => {
+    const lines = renderAnswer(TABLE_ANSWER, {
+      color: true,
+      colors: createColors(true),
+      width: 80,
+    })
+    const text = lines.join('\n')
+
+    // No row survives as its source form, and no separator row is printed.
+    expect(text).not.toContain('| ---')
+    expect(text).not.toMatch(/^\s*\|/m)
+    expect(text).not.toContain('| Finding |')
+
+    // It uses the FAQ's own table furniture instead: box separators, a bold
+    // header and a rule under it.
+    expect(text).toContain('\u001b[1mFinding\u001b[22m')
+    expect(text).toContain('\u2502')
+    expect(text).toContain('\u2500\u253c\u2500')
+
+    // Each row is a single line, with its cells side by side.
+    const row = lines.find((line) => line.includes('global-install'))
+    expect(row).toContain('npm i -g freebuff@latest')
+    expect(lines.find((line) => line.includes('env-hygiene'))).toContain(
+      'Delete the authToken line.',
+    )
+
+    // It never overflows the width it was given.
+    for (const line of lines) expect(stringWidth(line)).toBeLessThanOrEqual(80)
+  })
+
+  it('renders a plain table with separators but no escape codes', () => {
+    const lines = renderAnswer(TABLE_ANSWER, PLAIN)
+    const text = lines.join('\n')
+    expect(text).not.toContain('\u001b')
+    expect(text).not.toContain('| ---')
+    expect(text).not.toMatch(/^\s*\|/m)
+    expect(text).toContain('\u2502')
+    expect(lines.some((line) => line.includes('global-install'))).toBe(true)
+    expect(lines.at(-1)).toBe('Run fbdoc check again to confirm.')
+  })
+
+  it('renders a table that is still open when the stream ends', () => {
+    const renderer = new AnswerRenderer(PLAIN)
+    const lines = [
+      ...renderer.push('| a | b |\n| --- | --- |\n| 1 | 2 |'),
+      ...renderer.flush(),
+    ]
+    expect(lines).toHaveLength(3)
+    expect(lines[2]).toContain('1')
+    expect(lines[2]).toContain('2')
+    expect(lines.join('\n')).toContain('\u2502')
+  })
+
+  it('prints a pipe run that is not a table as the prose it is', () => {
+    // No separator row, so markdown would not treat this as a table either.
+    expect(renderAnswer('| nothing | to see |\n| here |', PLAIN)).toEqual([
+      '| nothing | to see |',
+      '| here |',
+    ])
+    expect(renderAnswer('| alone |', PLAIN)).toEqual(['| alone |'])
   })
 
   it('renders a final line that arrived without a newline', () => {
@@ -763,6 +839,12 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toMatch(/Never invent a Freebuff flag/)
     expect(prompt).toMatch(/You cannot run anything/)
     expect(prompt).toMatch(/fbdoc export/)
+  })
+
+  it('asks for plain ASCII and short table cells the console can render', () => {
+    expect(prompt).toMatch(/never use emoji/i)
+    expect(prompt).toMatch(/empty box/i)
+    expect(prompt).toMatch(/keep every cell to a few words/i)
   })
 
   it('never hands a secret or a home directory to a third party', () => {

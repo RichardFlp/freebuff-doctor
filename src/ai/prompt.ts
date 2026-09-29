@@ -162,6 +162,8 @@ const HOW_TO_ANSWER = `How to answer:
 - Name the finding you mean, e.g. "the \`dns\` check", so they can match it to their screen.
 - Keep it short: a sentence or two, then a numbered list of at most five steps. At most one code block, under fifteen lines.
 - When you need a detail you do not have, ask one short question instead of guessing.
+- Plain text only: never use emoji, box-drawing characters or icons. This is read in a Windows console where anything outside ASCII often shows up as an empty box.
+- If you use a table, keep every cell to a few words: the columns are sized to the widest cell and truncated when they do not fit. Never put a command, a path or a full sentence in a cell — put those in a list or a \`\`\`cmd block underneath the table.
 - Never invent a Freebuff flag, setting, file path, URL or feature. If you are not sure, say so and point them at \`fbdoc export\` so a human helper can read the full report.
 - You cannot run anything. Say "run ..." rather than implying you did it.
 - Their home directory and secrets were redacted before reaching you. Never ask them to paste an API key, token or password into this chat.

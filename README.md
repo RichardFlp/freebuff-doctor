@@ -179,7 +179,7 @@ Freebuff assistant
 The warning that Freebuff is “behind the latest release” is the most likely reason it keeps prompting you to update. Update the global CLI and clean the old engine cache, then restart your terminal.
 ```
 
-Abridged: the real run prints every finding the assistant was given, and then the answer. The answer is **styled as it streams** — headings become underlined titles, `**emphasis**` becomes bold, backticks become coloured code, and a fenced `cmd` block is indented without its fence markers, so you read a formatted answer rather than raw Markdown. With colour off or output piped, the markers are stripped instead of printed. The answer is about *your* machine — it names the checks, quotes their `fix` commands, and suggests the FAQ section behind each one.
+Abridged: the real run prints every finding the assistant was given, and then the answer. The answer is **styled as it streams** — headings become underlined titles, `**emphasis**` becomes bold, backticks become coloured code, a Markdown table becomes aligned columns with a bold header, and a fenced `cmd` block is indented without its fence markers, so you read a formatted answer rather than raw Markdown. With colour off or output piped, the markers are stripped instead of printed. The answer is about *your* machine — it names the checks, quotes their `fix` commands, and suggests the FAQ section behind each one.
 
 Pick **Connect Groq API for AI assistance** in the menu for an interactive chat instead: same diagnostics, then as many follow-ups as you need, with `exit` to leave.
 
