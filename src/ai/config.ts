@@ -14,6 +14,12 @@ export const GROQ_API_BASE = 'https://api.groq.com/openai/v1'
  */
 export const AI_MODEL = 'openai/gpt-oss-20b'
 
+/**
+ * Sampling temperature for answers. Zero: this assistant explains a machine it
+ * has been handed the facts about, and an inventive answer is a wrong answer.
+ */
+export const ANSWER_TEMPERATURE = 0
+
 /** The variable users are told to set when they would rather not save a key. */
 export const API_KEY_ENV = 'GROQ_API_KEY'
 

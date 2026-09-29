@@ -43,6 +43,11 @@ import {
   MAX_KNOWLEDGE_CHARS,
 } from '../src/ai/knowledge.js'
 import { estimateTokens } from '../src/util/tokens.js'
+import {
+  commandClaims,
+  quotedSections,
+  unsupportedClaims,
+} from '../src/ai/grounding.js'
 import { createColors } from 'picocolors'
 
 import { AnswerRenderer, renderAnswer } from '../src/ai/render.js'
@@ -963,6 +968,88 @@ describe('Freebuff knowledge', () => {
     expect(knowledge).toContain('FAQ sections behind this run')
     // Small enough to leave the free tier's minute to the answer itself.
     expect(estimateTokens(knowledge)).toBeLessThan(3_200)
+  })
+})
+
+describe('grounding check', () => {
+  const material = [
+    'The bundled FAQ says:',
+    '',
+    '#### Getting Your Project URL',
+    '',
+    'There is no "share" button, so you will need to copy the URL manually.',
+    '',
+    '1. Open your Freebuff web/cloud project.',
+    '2. Copy the address bar URL — it will look like `https://freebuff.com/{web/cloud}/project/{random-words}`.',
+    '',
+    'Then answer this question:',
+    '',
+    'how do I get my project URL?',
+  ].join('\n')
+
+  it('flags the commands a small model invents', () => {
+    // Both of these came out of a real run, with the FAQ quoted above it.
+    expect(
+      unsupportedClaims('Run `fb project list` and pick an id.', material),
+    ).toEqual(['fb project list'])
+    expect(
+      unsupportedClaims(
+        'Use `freebuff project url <project-name>` to print it.',
+        material,
+      ),
+    ).toEqual(['freebuff project url <project-name>'])
+    expect(
+      unsupportedClaims(
+        'Select the project and click the Share button, then run:\n\n    npm i -g freebuff@latest\n',
+        material,
+      ),
+    ).toEqual(['npm i -g freebuff@latest'])
+  })
+
+  it('accepts what the material actually says', () => {
+    const good = [
+      'The FAQ is clear that there is no "share" button:',
+      '',
+      '1. Open your Freebuff web/cloud project.',
+      '2. Copy the address bar URL — it will look like',
+      '   `https://freebuff.com/{web/cloud}/project/{random-words}`.',
+      '',
+      'Read it with `fbdoc faq "Getting Your Project URL"`.',
+    ].join('\n')
+    expect(unsupportedClaims(good, material)).toEqual([])
+  })
+
+  it('never flags fbdoc itself, whose commands the prompt documents', () => {
+    expect(
+      unsupportedClaims(
+        'Run `fbdoc export` and `fbdoc check --only dns`, or `fbdoc faq "Network Issues"`.',
+        material,
+      ),
+    ).toEqual([])
+  })
+
+  it('sees a command through fancy quotes and dashes', () => {
+    const dashed =
+      '#### Something\n\ndel "%USERPROFILE%\\.config\\manicode\\*.old.*" works.'
+    expect(
+      unsupportedClaims(
+        'Run `del "%USERPROFILE%\\.config\\manicode\\*.old.*"`.',
+        dashed,
+      ),
+    ).toEqual([])
+    expect(
+      commandClaims('Use `git config --global core.longpaths true`.'),
+    ).toEqual(['git config --global core.longpaths true'])
+  })
+
+  it('recovers the quoted sections and the question from the turn', () => {
+    const sections = quotedSections(material)
+    expect(sections.map((section) => section.title)).toEqual([
+      'Getting Your Project URL',
+    ])
+    expect(sections[0]?.body).toContain('no "share" button')
+    // The question is not swallowed into the last section.
+    expect(sections[0]?.body).not.toContain('how do I get my project URL?')
   })
 })
 

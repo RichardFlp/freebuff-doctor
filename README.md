@@ -209,7 +209,9 @@ The assistant is not left to guess about Freebuff. Every prompt carries the know
 - **The sections a question is about, quoted verbatim** — the bundled search picks them, the same one `fbdoc faq` uses, so a question about a project URL gets the *Getting Your Project URL* text and a question about refunds gets *Freebucks Refunds*. Its wording is the FAQ's wording, and it is told the FAQ wins wherever its own idea of how such a tool works disagrees.
 - **Every check in the catalogue** — what each one looks at and why it matters, so it can explain any finding and send you to `fbdoc explain <id>` for the rest.
 
-That is also why it declines instead of inventing: when the FAQ does not cover something, it says so and names the closest section rather than describing a button that does not exist. The section it did not quote is always one `fbdoc faq "<title>"` away, and a free Groq key is limited to 8,000 tokens a minute, so a long chat drops its oldest turns rather than failing on the fourth question.
+That is also why it declines instead of inventing: when the FAQ does not cover something, it says so and names the closest section rather than describing a button that does not exist — and it only names sections that are really in the index, however plausible an invented title would sound.
+
+An answer that presents a command gets read back against everything the model was given, too. A small model will occasionally reach for a command it half-remembers even with the FAQ in front of it — a real run produced `fb project list` and a `freebuff project url` that never existed — so `fbdoc ask` says which fragments the FAQ does not contain and prints the FAQ's own wording for that question underneath, rather than leaving you to paste instructions that were guessed. The section it did not quote is always one `fbdoc faq "<title>"` away, and a free Groq key is limited to 8,000 tokens a minute, so a long chat drops its oldest turns rather than failing on the fourth question.
 
 ### What leaves your machine
 

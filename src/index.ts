@@ -31,6 +31,7 @@ export { buildHelperReport } from './report/helper.js'
 export type { HelperReportInput } from './report/helper.js'
 export {
   AI_MODEL,
+  ANSWER_TEMPERATURE,
   GROQ_API_BASE,
   keyFile,
   looksLikeApiKey,
@@ -63,6 +64,7 @@ export {
   faqIndex,
   relevantSections,
 } from './ai/knowledge.js'
+export { commandClaims, unsupportedClaims } from './ai/grounding.js'
 export { estimateTokens } from './util/tokens.js'
 export { AnswerRenderer, renderAnswer } from './ai/render.js'
 export type { AnswerRendererOptions } from './ai/render.js'

@@ -1,5 +1,6 @@
 import {
   AI_MODEL,
+  ANSWER_TEMPERATURE,
   API_KEY_ENV,
   KEY_SIGNUP_URL,
   looksLikeApiKey,
@@ -8,6 +9,7 @@ import {
   storeApiKey,
   type ApiKeySource,
 } from '../ai/config.js'
+import { quotedSections, unsupportedClaims } from '../ai/grounding.js'
 import {
   AiError,
   DEFAULT_AI_TIMEOUT_MS,
@@ -30,7 +32,8 @@ import {
 } from '../checks/types.js'
 import { heading, printResult, write, writeErr } from '../ui/output.js'
 import { ask, askSecret, confirm } from '../ui/prompts.js'
-import { c, GLYPH, isInteractive } from '../ui/theme.js'
+import { c, GLYPH, isInteractive, terminalWidth } from '../ui/theme.js'
+import { renderMarkdown } from '../util/markdown.js'
 import {
   collectSnapshot,
   type EnvironmentSnapshot,
@@ -240,6 +243,58 @@ function reportAiFailure(error: unknown, verbose: boolean): void {
 }
 
 /**
+ * Reads the answer back against everything the model was handed.
+ *
+ * Instructions alone do not stop a small model from inventing a command it
+ * half-remembers — the same question produced the FAQ's wording on one run and
+ * `fb project list` on the next. So when an answer presents something to run
+ * that appears nowhere in its context, the FAQ text for that question is
+ * printed underneath it: the reader gets the authoritative wording instead of
+ * instructions they cannot trust.
+ */
+function reportUngrounded(answer: string, messages: ChatMessage[]): void {
+  const material = messages.map((message) => message.content).join('\n')
+  const invented = unsupportedClaims(answer, material)
+  if (invented.length === 0) return
+
+  const quote = (value: string): string =>
+    `“${value.replace(/\s+/g, ' ').trim().slice(0, 60)}”`
+  write('')
+  write(
+    c().yellow(
+      `${GLYPH.failure} Not in the FAQ: ${invented.map(quote).join(', ')} — the answer above may have guessed.`,
+    ),
+  )
+
+  const sections = quotedSections(material).slice(0, 2)
+  if (sections.length === 0) {
+    write(
+      c().dim(
+        '  Run fbdoc faq with a few words from your question to read what it actually says.',
+      ),
+    )
+    return
+  }
+
+  write(c().dim("  Here is the FAQ's own wording — trust this instead:"))
+  for (const section of sections) {
+    write('')
+    write(c().bold(section.title))
+    for (const line of renderMarkdown(section.body, {
+      width: terminalWidth() - 2,
+      indent: '  ',
+    })) {
+      write(line)
+    }
+    write(
+      c().dim(
+        `  Read it in full with ${c().cyan('fbdoc faq')} "${section.title}"`,
+      ),
+    )
+  }
+}
+
+/**
  * Sends the conversation so far and prints the answer as it arrives.
  *
  * Deliberately no spinner. A spinner redraws the current line with ANSI cursor
@@ -278,6 +333,7 @@ async function answerOnce(
     {
       apiKey: source.key,
       messages,
+      temperature: ANSWER_TEMPERATURE,
       timeoutMs: aiTimeoutMs(options),
     },
     (delta) => print(renderer.push(delta)),
@@ -287,6 +343,8 @@ async function answerOnce(
   open()
   if (!answer.trim()) {
     write(c().yellow('Groq sent an empty answer — try asking in another way.'))
+  } else {
+    reportUngrounded(answer, messages)
   }
   return answer
 }
