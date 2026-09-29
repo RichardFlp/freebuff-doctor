@@ -40,14 +40,30 @@ export {
   storeApiKey,
 } from './ai/config.js'
 export type { ApiKeySource } from './ai/config.js'
-export { AiError, answerFromBody, chat, describeFailure } from './ai/client.js'
+export {
+  AiError,
+  answerFromBody,
+  chat,
+  describeFailure,
+  fitMessages,
+  MAX_REQUEST_TOKENS,
+} from './ai/client.js'
 export type { ChatMessage, ChatOptions } from './ai/client.js'
 export {
   buildFindings,
+  buildKnowledgeMessage,
   buildSystemPrompt,
   buildUserMessage,
 } from './ai/prompt.js'
 export type { AssistantContext } from './ai/prompt.js'
+export {
+  buildKnowledge,
+  buildTurnKnowledge,
+  checkCatalogue,
+  faqIndex,
+  relevantSections,
+} from './ai/knowledge.js'
+export { estimateTokens } from './util/tokens.js'
 export { AnswerRenderer, renderAnswer } from './ai/render.js'
 export type { AnswerRendererOptions } from './ai/render.js'
 export {

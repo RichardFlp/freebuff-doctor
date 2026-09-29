@@ -4,6 +4,7 @@ import type { EnvironmentSnapshot } from '../util/environment.js'
 import { anonymizePath, type PlatformPaths } from '../util/platform.js'
 import { redact } from '../util/redact.js'
 import { AI_MODEL } from './config.js'
+import { buildKnowledge, buildTurnKnowledge } from './knowledge.js'
 
 /**
  * Everything the assistant is told about the machine it is advising. All of it
@@ -162,9 +163,12 @@ const HOW_TO_ANSWER = `How to answer:
 - Name the finding you mean, e.g. "the \`dns\` check", so they can match it to their screen.
 - Keep it short: a sentence or two, then a numbered list of at most five steps. At most one code block, under fifteen lines.
 - When you need a detail you do not have, ask one short question instead of guessing.
-- Plain text only: never use emoji, box-drawing characters or icons. This is read in a Windows console where anything outside ASCII often shows up as an empty box.
+- Plain ASCII only: never use emoji, box-drawing characters or icons. This is read in a Windows console where anything outside ASCII often shows up as an empty box.
 - If you use a table, keep every cell to a few words: the columns are sized to the widest cell and truncated when they do not fit. Never put a command, a path or a full sentence in a cell — put those in a list or a \`\`\`cmd block underneath the table.
-- Never invent a Freebuff flag, setting, file path, URL or feature. If you are not sure, say so and point them at \`fbdoc export\` so a human helper can read the full report.
+- Speak as someone who knows Freebuff, because you have been handed the material: every FAQ section is listed for you, the ones this question touches are quoted verbatim, and every check \`fbdoc\` runs is catalogued. Answer from those and name the FAQ section when it covers the point, so they can print it with \`fbdoc faq "<its title>"\`.
+- The FAQ text you are given is the only authority on Freebuff here. Anything it does not say about Freebuff — a button, a menu, a setting, a flag, a file, a URL, a limit — you do not know: say so instead of guessing. Never contradict it, and never put your own wording inside a quote or a blockquote.
+- Every command you give must be copied from that FAQ text or from the findings. If neither has one, give none, and point at \`fbdoc faq\`, \`fbdoc export\` or the Discord instead.
+- Name only FAQ sections and check ids that appear in the material you were given, spelled exactly as they appear there. A section you cannot point at in that list does not exist, however plausible its title sounds.
 - You cannot run anything. Say "run ..." rather than implying you did it.
 - Their home directory and secrets were redacted before reaching you. Never ask them to paste an API key, token or password into this chat.
 - If nothing is wrong, say so in one line and offer something useful: a check to re-run, or \`fbdoc export\`.
@@ -189,9 +193,24 @@ export function buildSystemPrompt(context: AssistantContext): string {
     `## Findings from this run\n\n${buildFindings(context.results, context.summary)}`,
     `## This machine\n\n- Platform: ${context.platform}\n- Node: ${context.nodeVersion}\n- fbdoc: ${context.doctorVersion}\n- Network checks: ${context.offline ? 'skipped (--offline was used)' : 'ran normally'}\n- Freebuff directories (home shown as \`~\`):\n${describePaths(context)}`,
     `## Environment (already redacted)\n\n${describeEnvironment(context.environment)}`,
+    `## Freebuff knowledge\n\n${buildKnowledge(context.results)}`,
     HOW_TO_ANSWER,
   ]
   return redact(sections.join('\n\n'), context.home)
+}
+
+/**
+ * The FAQ text to send immediately before one question, so that a follow-up
+ * about something the standing prompt only lists is answered from the FAQ's own
+ * wording. Returns `null` when nothing in the FAQ bears on the question.
+ */
+export function buildKnowledgeMessage(
+  question: string,
+  results: CheckResult[],
+  home?: string,
+): string | null {
+  const knowledge = buildTurnKnowledge(question, results)
+  return knowledge ? redact(knowledge, home) : null
 }
 
 /** The user's own turn, redacted before it leaves the machine. */

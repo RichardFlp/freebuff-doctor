@@ -11,9 +11,12 @@ import {
   chat,
   deltaFromSsePayload,
   describeFailure,
+  fitMessages,
+  MAX_REQUEST_TOKENS,
   sanitizeText,
   serverMessage,
   splitSseBuffer,
+  type ChatMessage,
 } from '../src/ai/client.js'
 import {
   AI_MODEL,
@@ -28,15 +31,25 @@ import {
 } from '../src/ai/config.js'
 import {
   buildFindings,
+  buildKnowledgeMessage,
   buildSystemPrompt,
   buildUserMessage,
 } from '../src/ai/prompt.js'
+import {
+  buildKnowledge,
+  buildTurnKnowledge,
+  checkCatalogue,
+  faqIndex,
+  MAX_KNOWLEDGE_CHARS,
+} from '../src/ai/knowledge.js'
+import { estimateTokens } from '../src/util/tokens.js'
 import { createColors } from 'picocolors'
 
 import { AnswerRenderer, renderAnswer } from '../src/ai/render.js'
 import { MENU_CHOICES } from '../src/commands/menu.js'
 import type { CheckResult } from '../src/checks/types.js'
 import { summarize } from '../src/checks/types.js'
+import { allSections } from '../src/faq/reference.js'
 import { collectSnapshot } from '../src/util/environment.js'
 import { resolvePlatformPaths } from '../src/util/platform.js'
 import { redact } from '../src/util/redact.js'
@@ -835,8 +848,39 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('- CLI state')
   })
 
+  it('hands the model the Freebuff FAQ and the check catalogue', () => {
+    expect(prompt).toContain('## Freebuff knowledge')
+    // What the FAQ covers, so it never claims to know nothing about Freebuff.
+    expect(prompt).toContain('What the bundled FAQ covers')
+    expect(prompt).toContain('Network Issues')
+    expect(prompt).toContain('Freebucks Refunds')
+    // What each check looks at, so it can explain any of them.
+    expect(prompt).toContain('What fbdoc checks')
+    expect(prompt).toContain('- global-install —')
+
+    // A finding that names an FAQ section gets its text quoted, not summarised.
+    const withSlug = buildSystemPrompt(
+      makeContext([makeResult({ status: 'fail', faqSlug: 'network-issues' })]),
+    )
+    expect(withSlug).toContain('FAQ sections behind this run')
+    expect(withSlug).toContain('#### Network Issues')
+  })
+
+  it('sends the FAQ section a follow-up is about, and nothing for an empty question', () => {
+    const message = buildKnowledgeMessage(
+      'how do I get my project URL?',
+      [],
+      HOME,
+    )
+    expect(message).toContain('#### Getting Your Project URL')
+    expect(message).toMatch(/fbdoc faq/)
+    expect(buildKnowledgeMessage('', [], HOME)).toBeNull()
+  })
+
   it('tells the model to stay short, honest and offline', () => {
-    expect(prompt).toMatch(/Never invent a Freebuff flag/)
+    expect(prompt).toMatch(/the only authority on Freebuff here/i)
+    expect(prompt).toMatch(/say so instead of guessing/)
+    expect(prompt).toMatch(/never put your own wording inside a quote/)
     expect(prompt).toMatch(/You cannot run anything/)
     expect(prompt).toMatch(/fbdoc export/)
   })
@@ -861,6 +905,100 @@ describe('buildSystemPrompt', () => {
     expect(safe).toContain('[redacted token]')
     expect(safe.replace(/\\/g, '/')).toContain('~/.config/manicode')
     expect(safe).not.toContain(HOME)
+  })
+})
+
+describe('Freebuff knowledge', () => {
+  it('lists every FAQ section it can be asked about', () => {
+    const index = faqIndex()
+    expect(index).toContain('Network Issues')
+    expect(index).toContain('Freebucks Refunds')
+    expect(index).toContain('Getting Your Project URL')
+    // The official docs are part of the knowledge too, not just the community FAQ.
+    expect(index).toMatch(/codebuff\.com\/docs/)
+    expect(index).not.toMatch(/further sections: run/i)
+  })
+
+  it('catalogues every check with what it looks at and why it matters', () => {
+    const catalogue = checkCatalogue()
+    for (const id of ['node-runtime', 'global-install', 'cache-integrity']) {
+      expect(catalogue).toContain(`- ${id} —`)
+    }
+    expect(catalogue).toContain('Why it matters:')
+    expect(catalogue).toContain('FAQ:')
+    // Nothing is dropped for want of budget: an unknown check would invite a guess.
+    expect(catalogue).not.toMatch(/further checks/)
+  })
+
+  it('quotes the FAQ sections a question is about, verbatim', () => {
+    const turn = buildTurnKnowledge('how do I get my project URL?')
+    expect(turn).toContain('#### Getting Your Project URL')
+    // The body, not the model's memory of it.
+    const section = allSections().find(
+      (candidate) => candidate.title === 'Getting Your Project URL',
+    )
+    expect(section).toBeTruthy()
+    expect(turn).toContain((section?.body ?? '').split('\n')[0] ?? '')
+  })
+
+  it('names the section behind a finding', () => {
+    const turn = buildTurnKnowledge('anything at all', [
+      makeResult({ faqSlug: 'freebucks-refunds' }),
+    ])
+    expect(turn).toContain('#### Freebucks Refunds')
+  })
+
+  it('says nothing, rather than guessing, when the FAQ has nothing to offer', () => {
+    expect(buildTurnKnowledge('')).toBeNull()
+  })
+
+  it('keeps the standing knowledge inside its budget', () => {
+    const knowledge = buildKnowledge([
+      makeResult({ status: 'fail', faqSlug: 'crash-on-start--updating' }),
+      makeResult({ id: 'dns', status: 'warn', faqSlug: 'network-issues' }),
+    ])
+    expect(knowledge.length).toBeLessThanOrEqual(MAX_KNOWLEDGE_CHARS)
+    expect(knowledge).toContain('What the bundled FAQ covers')
+    expect(knowledge).toContain('What fbdoc checks')
+    expect(knowledge).toContain('FAQ sections behind this run')
+    // Small enough to leave the free tier's minute to the answer itself.
+    expect(estimateTokens(knowledge)).toBeLessThan(3_200)
+  })
+})
+
+describe('fitMessages', () => {
+  const system: ChatMessage = { role: 'system', content: 'the standing prompt' }
+
+  it('leaves a conversation that fits alone', () => {
+    const messages: ChatMessage[] = [
+      system,
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: 'hi' },
+      { role: 'user', content: 'again' },
+    ]
+    expect(fitMessages(messages)).toBe(messages)
+  })
+
+  it('drops the oldest turns and keeps the prompt and the question', () => {
+    const messages: ChatMessage[] = [system]
+    for (let turn = 0; turn < 40; turn += 1) {
+      messages.push({ role: 'user', content: `question ${turn} `.repeat(200) })
+      messages.push({
+        role: 'assistant',
+        content: `answer ${turn} `.repeat(200),
+      })
+    }
+    messages.push({ role: 'user', content: 'the one being asked now' })
+
+    const fitted = fitMessages(messages)
+    expect(fitted[0]).toBe(system)
+    expect(fitted.at(-1)?.content).toBe('the one being asked now')
+    expect(fitted.length).toBeLessThan(messages.length)
+    const tokens = fitted.reduce(
+      (sum, message) => sum + estimateTokens(message.content),
+      0,
+    )
+    expect(tokens).toBeLessThanOrEqual(MAX_REQUEST_TOKENS + 64)
   })
 })
 

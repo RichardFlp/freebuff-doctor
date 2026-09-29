@@ -14,7 +14,11 @@ import {
   chat,
   type ChatMessage,
 } from '../ai/client.js'
-import { buildSystemPrompt, buildUserMessage } from '../ai/prompt.js'
+import {
+  buildKnowledgeMessage,
+  buildSystemPrompt,
+  buildUserMessage,
+} from '../ai/prompt.js'
 import { AnswerRenderer } from '../ai/render.js'
 import { runChecks } from '../checks/index.js'
 import {
@@ -289,12 +293,32 @@ async function answerOnce(
 
 const EXIT_WORDS = /^(?:exit|quit|q|:q|\/exit|\/quit|bye|thanks|thank you)$/i
 
+/**
+ * The user turn for a question: the FAQ text this question should be answered
+ * from, then the question itself.
+ *
+ * The standing prompt lists every FAQ section; this is what puts the right one
+ * in full, in the same turn as the question, where a small model will actually
+ * use it. The question goes last so the facts are in place before it arrives.
+ */
+function turnContent(
+  question: string,
+  results: CheckResult[],
+  home: string,
+): string {
+  const asked = buildUserMessage(question, home)
+  const knowledge = buildKnowledgeMessage(question, results, home)
+  if (!knowledge) return asked
+  return `${knowledge}\n\nThen answer this question:\n\n${asked}`
+}
+
 /** The back-and-forth loop. Ctrl+C or `exit` closes it, as does a cancelled prompt. */
 async function openChat(
   messages: ChatMessage[],
   options: AiCommandOptions,
   source: ApiKeySource,
   home: string,
+  results: CheckResult[],
 ): Promise<number> {
   write('')
   write(
@@ -326,15 +350,18 @@ async function openChat(
       return OK
     }
 
-    messages.push({ role: 'user', content: buildUserMessage(question, home) })
+    // The turn is dropped if it fails, so a retry does not send it twice.
+    const mark = messages.length
+    messages.push({
+      role: 'user',
+      content: turnContent(question, results, home),
+    })
     try {
       const answer = await answerOnce(messages, options, source)
       messages.push({ role: 'assistant', content: answer })
     } catch (error) {
+      messages.length = mark
       reportAiFailure(error, options.verbose)
-      // The turn is retried from the same context, so drop the message that
-      // never got an answer rather than sending it twice.
-      messages.pop()
     }
   }
 }
@@ -367,7 +394,13 @@ export async function runAiCommand(options: AiCommandOptions): Promise<number> {
   const messages: ChatMessage[] = [
     { role: 'system', content: systemMessage(prepared) },
   ]
-  return openChat(messages, options, source, prepared.context.home)
+  return openChat(
+    messages,
+    options,
+    source,
+    prepared.context.home,
+    prepared.results,
+  )
 }
 
 /**
@@ -406,7 +439,7 @@ export async function runAskCommand(
     { role: 'system', content: systemMessage(prepared) },
     {
       role: 'user',
-      content: buildUserMessage(asked, prepared.context.home),
+      content: turnContent(asked, prepared.results, prepared.context.home),
     },
   ]
 

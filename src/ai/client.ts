@@ -1,3 +1,4 @@
+import { estimateTokens } from '../util/tokens.js'
 import { AI_MODEL, GROQ_API_BASE } from './config.js'
 
 export type ChatRole = 'system' | 'user' | 'assistant'
@@ -9,6 +10,14 @@ export interface ChatMessage {
 
 /** How long one answer may take. Generous: a full explanation is not a ping. */
 export const DEFAULT_AI_TIMEOUT_MS = 90_000
+
+/**
+ * What one request may cost in input tokens. A free Groq key allows 8000 tokens
+ * a minute for the pinned model, and the answer's own tokens come out of the
+ * same minute, so the conversation is kept comfortably under that — otherwise a
+ * chat that has been going for a few turns starts failing on the fourth.
+ */
+export const MAX_REQUEST_TOKENS = 5_500
 
 /**
  * A failure worth showing a human: the message says what happened, the hint
@@ -218,6 +227,34 @@ async function readStream(
 }
 
 /**
+ * Trims a conversation to the request budget, keeping the standing system
+ * prompt and the newest exchange and dropping the oldest turns. The question in
+ * hand is never dropped, even if the prompt alone already fills the budget —
+ * answering with less context beats not answering at all.
+ */
+export function fitMessages(
+  messages: ChatMessage[],
+  maxTokens = MAX_REQUEST_TOKENS,
+): ChatMessage[] {
+  if (messages.length <= 2) return messages
+  const size = (message: ChatMessage): number =>
+    estimateTokens(message.content) + 4
+  const total = messages.reduce((sum, message) => sum + size(message), 0)
+  if (total <= maxTokens) return messages
+
+  const head = messages[0] as ChatMessage
+  const kept: ChatMessage[] = []
+  let used = size(head)
+  for (let index = messages.length - 1; index >= 1; index -= 1) {
+    const message = messages[index] as ChatMessage
+    if (kept.length > 0 && used + size(message) > maxTokens) break
+    used += size(message)
+    kept.push(message)
+  }
+  return [head, ...kept.reverse()]
+}
+
+/**
  * Sends one turn to Groq and returns the answer. With `onDelta` the response is
  * streamed and the fragments are handed over as they arrive; without it the
  * whole answer is fetched in one go.
@@ -248,7 +285,7 @@ export async function chat(
       },
       body: JSON.stringify({
         model,
-        messages: options.messages,
+        messages: fitMessages(options.messages),
         temperature: options.temperature ?? 0.3,
         max_completion_tokens: options.maxTokens ?? 1200,
         stream: streaming,

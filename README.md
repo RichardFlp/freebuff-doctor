@@ -201,9 +201,19 @@ $ fbdoc
 
 Delete that `groq.json` to forget the key. It is never printed back in full, never written into a report, and the same redactor that scrubs reports catches `gsk_…` values anywhere else they might appear — including text you paste into the chat.
 
+### What the assistant knows
+
+The assistant is not left to guess about Freebuff. Every prompt carries the knowledge this package already ships:
+
+- **The whole FAQ index** — every section of the bundled `faq.md`, so it knows what is covered (and never claims Freebuff is a mystery to it).
+- **The sections a question is about, quoted verbatim** — the bundled search picks them, the same one `fbdoc faq` uses, so a question about a project URL gets the *Getting Your Project URL* text and a question about refunds gets *Freebucks Refunds*. Its wording is the FAQ's wording, and it is told the FAQ wins wherever its own idea of how such a tool works disagrees.
+- **Every check in the catalogue** — what each one looks at and why it matters, so it can explain any finding and send you to `fbdoc explain <id>` for the rest.
+
+That is also why it declines instead of inventing: when the FAQ does not cover something, it says so and names the closest section rather than describing a button that does not exist. The section it did not quote is always one `fbdoc faq "<title>"` away, and a free Groq key is limited to 8,000 tokens a minute, so a long chat drops its oldest turns rather than failing on the fourth question.
+
 ### What leaves your machine
 
-- **Sent to Groq:** your question, plus a redacted digest built from the diagnostics — each finding with its `fix`, its FAQ link and what the check looks at, and the environment snapshot (platform, Node, npm, `PATH` in search order). It is capped in size, so a noisy machine cannot flood the request.
+- **Sent to Groq:** your question, plus a redacted digest built from the diagnostics — each finding with its `fix`, its FAQ link and what the check looks at, and the environment snapshot (platform, Node, npm, `PATH` in search order). Alongside it go the bundled FAQ's section index and the sections your question is about, and the check catalogue — all public text from this package, never anything from your disk. Everything is capped in size, so a noisy machine cannot flood the request.
 - **Never sent:** log files, chat transcripts, your home directory, or any token. Everything outbound goes through the same redactor the reports use, and your home path is collapsed to `~` on the way out.
 - **Your choice:** `fbdoc ask --no-checks "..."` sends the question with no machine context at all, and `--only` narrows what the assistant is told.
 
